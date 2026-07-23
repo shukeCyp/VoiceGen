@@ -2,6 +2,11 @@
 
 基于 **pywebview + Vue 3** 的桌面配音工具。使用小米 MiMo `mimo-v2.5-tts-voiceclone` 做音色克隆，支持多角色、多音色、语速设置、表格导入导出，最终合并为一首 **MP3**。
 
+## 使用教程
+
+- 图文教程：[`docs/使用教程.md`](docs/使用教程.md)
+- 示意短视频：[`docs/assets/tutorial-preview.mp4`](docs/assets/tutorial-preview.mp4)（概念演示，非真实录屏）
+
 ## 功能
 
 - **多人配音表格**：每行可选角色名、音色、原文、配音文本、语速、风格提示

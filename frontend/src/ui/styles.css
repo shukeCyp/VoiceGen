@@ -522,3 +522,100 @@
   color: var(--danger);
   background: var(--danger-soft);
 }
+
+/* Dialog / Modal */
+.vg-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(20, 18, 32, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: vg-dialog-fade 0.15s ease;
+}
+
+.vg-dialog {
+  width: min(400px, 100%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 18px 18px 16px;
+  outline: none;
+  animation: vg-dialog-pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.vg-dialog__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.vg-dialog__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--bg-soft);
+  color: var(--text-muted);
+}
+
+.vg-dialog__icon--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.vg-dialog__icon--primary {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.vg-dialog__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.vg-dialog__body {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 2px 0 16px;
+  min-height: 24px;
+}
+
+.vg-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@keyframes vg-dialog-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes vg-dialog-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

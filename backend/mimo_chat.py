@@ -13,7 +13,8 @@ from . import languages, mimo_tts
 LLM_MODEL = "mimo-v2.5-pro"
 TranslateMode = Literal["literal", "localize"]
 
-BATCH_SIZE = 20
+# Smaller batches return faster and parallelize better than one huge request
+BATCH_SIZE = 8
 
 
 def _safe_api_error(exc: urllib.error.HTTPError) -> RuntimeError:
@@ -124,21 +125,11 @@ def _build_system_prompt(
   {{"id": "原id", "text": "本土化后的台词"}}
 ]
 数组顺序与输入一致，条数必须相同。"""
-    # literal
-    return f"""你是专业翻译。
-任务：把台词从「{src}」准确翻译为「{tgt}」，供配音使用。
-
-直译要求：
-1. 忠实原文含义，不擅自增删剧情。
-2. 语法正确，表达通顺，适合朗读。
-3. 专有名词保持一致。
-4. 输出必须是 {target_native}。
-
-严格输出 JSON 数组，不要 Markdown，不要解释：
-[
-  {{"id": "原id", "text": "翻译后的台词"}}
-]
-数组顺序与输入一致，条数必须相同。"""
+    # literal — keep prompt short for lower latency
+    return f"""你是专业配音翻译。把台词从「{src}」译为「{tgt}」（{target_native}）。
+要求：忠实、通顺、适合朗读；不增删情节；专有名词前后一致。
+只输出 JSON 数组，无 Markdown、无解释，条数与顺序与输入一致：
+[{{"id":"…","text":"译文"}}]"""
 
 
 def _extract_json_array(raw: str) -> list[Any]:
@@ -196,13 +187,13 @@ def translate_batch(
         }
         for i, it in enumerate(items)
     ]
+    # compact JSON (no indent) reduces tokens / latency
     user = (
-        f"源语言: {source_lang}\n目标语言: {target_lang}\n模式: {mode}\n\n"
-        f"请翻译以下 JSON 数组中的 text 字段：\n"
-        f"{json.dumps(user_payload, ensure_ascii=False, indent=2)}"
+        f"{source_lang}->{target_lang} mode={mode}\n"
+        f"翻译 text 字段：\n{json.dumps(user_payload, ensure_ascii=False, separators=(',', ':'))}"
     )
 
-    temp = 0.2 if mode == "literal" else 0.55
+    temp = 0.1 if mode == "literal" else 0.55
     if temperature is not None:
         temp = temperature
 
@@ -215,6 +206,7 @@ def translate_batch(
             {"role": "user", "content": user},
         ],
         temperature=temp,
+        timeout=90.0 if mode == "literal" else 120.0,
     )
     parsed = _extract_json_array(raw)
 

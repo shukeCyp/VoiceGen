@@ -721,6 +721,36 @@ input[type='checkbox'] {
   padding: 0 2px;
 }
 
+.nav-version {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  padding: 2px 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.about-version {
+  padding: 4px 0 2px;
+}
+
+.about-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.about-meta {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.about-meta strong {
+  color: var(--accent);
+  font-weight: 650;
+}
+
 /* ── Workspace（右侧：顶栏固定，仅下方页面区域滚动） ───── */
 .workspace {
   flex: 1;
@@ -1064,8 +1094,12 @@ table.voices-table td {
 }
 
 .voice-ops-col {
-  width: 100px;
+  width: 128px;
   white-space: nowrap;
+}
+
+.voice-ops-col .vg-btn {
+  margin-right: 4px;
 }
 
 .voices-dir-hint {
@@ -1357,8 +1391,14 @@ table.script .status-cell {
   font-size: 12px;
 }
 
+table.script .style-col {
+  min-width: 120px;
+  max-width: 200px;
+  vertical-align: top;
+}
+
 table.script .ops-cell {
-  width: 132px;
+  width: 156px;
   white-space: nowrap;
 }
 

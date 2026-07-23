@@ -17,6 +17,9 @@ DEFAULT_SPEED = 1.0
 DEFAULT_GAP_MS = 200
 DEFAULT_SOURCE_LANG = "zh-CN"
 DEFAULT_TARGET_LANG = "en-US"
+DEFAULT_TTS_WORKERS = 4
+DEFAULT_TRANSLATE_WORKERS = 3
+DEFAULT_TRANSLATE_BATCH_SIZE = 8
 
 
 def _defaults() -> dict[str, Any]:
@@ -31,6 +34,9 @@ def _defaults() -> dict[str, Any]:
         "gap_ms": DEFAULT_GAP_MS,
         "source_lang": DEFAULT_SOURCE_LANG,
         "target_lang": DEFAULT_TARGET_LANG,
+        "tts_workers": DEFAULT_TTS_WORKERS,
+        "translate_workers": DEFAULT_TRANSLATE_WORKERS,
+        "translate_batch_size": DEFAULT_TRANSLATE_BATCH_SIZE,
         "window_width": 1280,
         "window_height": 860,
     }

@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { call, getApi, onEvent } from './bridge'
 import { THEMES, applyTheme, loadThemeId } from './themes'
+import { APP_DISPLAY, APP_NAME, APP_NAME_EN, APP_VERSION } from './version'
+import { vgConfirm } from './ui/dialog'
 /** @type {import('vue').Ref<'dub'|'voices'|'settings'>} */
 const page = ref('dub')
 
@@ -13,6 +15,10 @@ const navItems = [
 
 const themes = THEMES
 const themeId = ref(loadThemeId())
+const appVersion = ref(APP_VERSION)
+const appDisplay = ref(APP_DISPLAY)
+const appName = APP_NAME
+const appNameEn = APP_NAME_EN
 
 const voices = ref([])
 const voicesDir = ref('')
@@ -29,6 +35,9 @@ const config = reactive({
   gap_ms: 200,
   source_lang: 'zh-CN',
   target_lang: 'en-US',
+  tts_workers: 4,
+  translate_workers: 3,
+  translate_batch_size: 8,
 })
 
 const settingsForm = reactive({
@@ -41,6 +50,9 @@ const settingsForm = reactive({
   gap_ms: 200,
   source_lang: 'zh-CN',
   target_lang: 'en-US',
+  tts_workers: 4,
+  translate_workers: 3,
+  translate_batch_size: 8,
 })
 
 const apiStatus = ref('unknown')
@@ -87,6 +99,17 @@ function speakText(row) {
 const enabledCount = computed(
   () => rows.value.filter((r) => r.enabled && speakText(r)).length,
 )
+
+const allSelected = computed(
+  () => rows.value.length > 0 && rows.value.every((r) => r.enabled),
+)
+
+function toggleSelectAll(checked) {
+  const next = typeof checked === 'boolean' ? checked : !allSelected.value
+  for (const row of rows.value) {
+    row.enabled = next
+  }
+}
 
 const translatedCount = computed(
   () => rows.value.filter((r) => r.enabled && String(r.tts_text || '').trim()).length,
@@ -195,6 +218,9 @@ function syncSettingsForm() {
   settingsForm.gap_ms = config.gap_ms
   settingsForm.source_lang = config.source_lang
   settingsForm.target_lang = config.target_lang
+  settingsForm.tts_workers = config.tts_workers ?? 4
+  settingsForm.translate_workers = config.translate_workers ?? 3
+  settingsForm.translate_batch_size = config.translate_batch_size ?? 8
 }
 
 async function loadProject() {
@@ -256,6 +282,9 @@ async function saveSettings() {
     gap_ms: Number(settingsForm.gap_ms) || 0,
     source_lang: settingsForm.source_lang || config.source_lang,
     target_lang: settingsForm.target_lang || config.target_lang,
+    tts_workers: Math.max(1, Math.min(12, Number(settingsForm.tts_workers) || 4)),
+    translate_workers: Math.max(1, Math.min(8, Number(settingsForm.translate_workers) || 3)),
+    translate_batch_size: Math.max(1, Math.min(30, Number(settingsForm.translate_batch_size) || 8)),
   }
   if (settingsForm.api_key.trim()) {
     updates.api_key = settingsForm.api_key.trim()
@@ -321,7 +350,14 @@ async function importVoice() {
 }
 
 async function deleteVoice(id) {
-  if (!confirm(`删除音色「${id}」？`)) return
+  const ok = await vgConfirm({
+    title: '删除音色',
+    message: `确定删除音色「${id}」？此操作不可恢复。`,
+    confirmText: '删除',
+    cancelText: '取消',
+    tone: 'danger',
+  })
+  if (!ok) return
   const res = await call('delete_voice', id)
   if (!res.ok) {
     showToast(res.error || '删除失败', 'error')
@@ -366,6 +402,7 @@ async function exportTable(fmt = 'csv') {
 
 /** 导出空白/示例表格模板（CSV），便于填写后导入 */
 async function exportTableTemplate() {
+  // 表头由后端 export_csv 使用中文：角色,音色,原文,配音文本,语速,风格,启用
   const templateRows = [
     {
       speaker: '旁白',
@@ -414,7 +451,7 @@ async function exportTableTemplate() {
 }
 
 /** 一键清空整表（保留一行空行） */
-function clearAllRows() {
+async function clearAllRows() {
   if (!rows.value.length) {
     rows.value = [blankRow()]
     return
@@ -422,8 +459,15 @@ function clearAllRows() {
   const hasContent = rows.value.some(
     (r) => String(r.text || '').trim() || String(r.tts_text || '').trim() || String(r.speaker || '').trim(),
   )
-  if (hasContent && !confirm('确定清空整表？当前台词与译文将全部删除。')) {
-    return
+  if (hasContent) {
+    const ok = await vgConfirm({
+      title: '清空整表',
+      message: '确定清空整表？当前台词与译文将全部删除。',
+      confirmText: '清空',
+      cancelText: '取消',
+      tone: 'danger',
+    })
+    if (!ok) return
   }
   stopPlayback()
   rows.value = [blankRow()]
@@ -435,11 +479,17 @@ function clearAllRows() {
 }
 
 function applyTranslationResults(results) {
-  const map = new Map((results || []).map((r) => [String(r.id), r.tts_text]))
+  if (!results?.length) return
+  const map = new Map(results.map((r) => [String(r.id), r.tts_text]))
+  let updated = 0
   for (const row of rows.value) {
     if (map.has(String(row.id))) {
       row.tts_text = map.get(String(row.id))
+      updated += 1
     }
+  }
+  if (updated) {
+    nextTick(() => resizeAllTextareas())
   }
 }
 
@@ -515,10 +565,50 @@ async function startGenerate() {
     only_enabled: true,
     stop_on_error: false,
     target_lang: config.target_lang,
+    tts_workers: config.tts_workers || 4,
+    skip_final_merge: false,
   })
   if (!res.ok) {
     generating.value = false
     showToast(res.error || '启动失败', 'error')
+  }
+}
+
+/** 单条重新生成（不合并整轨 MP3） */
+async function regenerateRow(row) {
+  if (generating.value || translating.value) return
+  if (!speakText(row)) {
+    showToast('该行没有可配音文本', 'error')
+    return
+  }
+  if (!String(row.voice || '').trim()) {
+    showToast('请先为该行选择音色', 'error')
+    return
+  }
+  stopPlayback()
+  row.status = 'idle'
+  row.error = ''
+  row.duration = null
+  row.segment_path = ''
+  progress.index = 0
+  progress.total = 1
+  progress.status = 'starting'
+  progress.message = `重新生成：${row.speaker || ''} ${speakText(row).slice(0, 40)}`
+  generating.value = true
+
+  const one = { ...row, enabled: true }
+  const res = await call('generate_all', [one], {
+    gap_ms: config.gap_ms,
+    default_style: config.default_style,
+    only_enabled: true,
+    stop_on_error: false,
+    target_lang: config.target_lang,
+    tts_workers: 1,
+    skip_final_merge: true,
+  })
+  if (!res.ok) {
+    generating.value = false
+    showToast(res.error || '重新生成失败', 'error')
   }
 }
 
@@ -544,15 +634,24 @@ function applyEvent(event, payload) {
   } else if (event === 'translate_progress') {
     translating.value = true
     progress.status = 'translating'
+    progress.index = payload.done || 0
+    progress.total = payload.total || progress.total
     progress.message =
       payload.message ||
       `翻译中 ${payload.done || 0}/${payload.total || 0}（批次 ${payload.batch}/${payload.total_batches}）`
+    // 每批完成立即写入配音文本列
+    if (payload.results?.length) {
+      applyTranslationResults(payload.results)
+    }
   } else if (event === 'translate_done') {
     translating.value = false
+    // 兜底再合并一次全部结果
     applyTranslationResults(payload.results || [])
     const n = payload.count ?? payload.results?.length ?? 0
     const modeLabel = payload.mode === 'localize' ? '本土化' : '直译'
     progress.status = 'idle'
+    progress.index = n
+    progress.total = n
     progress.message = payload.note || `${modeLabel}完成 ${n} 行`
     showToast(
       payload.note || `${modeLabel}完成 ${n} 行 · ${payload.model || config.llm_model}`,
@@ -573,7 +672,8 @@ function applyEvent(event, payload) {
     progress.total = payload.total || 0
     progress.index = 0
     progress.status = 'running'
-    progress.message = `共 ${payload.total} 段`
+    const w = payload.workers || config.tts_workers || 4
+    progress.message = `共 ${payload.total} 段 · ${w} 线程并发`
   } else if (event === 'generate_progress') {
     progress.index = (payload.index ?? 0) + (payload.status === 'done' || payload.status === 'error' ? 1 : 0)
     progress.total = payload.total || progress.total
@@ -600,9 +700,23 @@ function applyEvent(event, payload) {
     generating.value = false
     progress.status = 'done'
     progress.index = progress.total
-    progress.message = `完成 · ${Number(payload.duration || 0).toFixed(1)}s`
-    lastOutput.value = payload
-    showToast('配音完成，已导出 MP3', 'success')
+    // Apply per-row results (full batch or single regen)
+    for (const item of payload.results || []) {
+      const row = rows.value.find((r) => r.id === item.row_id)
+      if (!row) continue
+      if (item.status) row.status = item.status
+      if (item.duration != null) row.duration = item.duration
+      if (item.segment_path) row.segment_path = item.segment_path
+      if (item.error) row.error = item.error
+    }
+    if (payload.skip_final_merge) {
+      progress.message = `单条生成完成 · ${Number(payload.duration || 0).toFixed(1)}s`
+      showToast('单条重新生成完成，可点试听', 'success')
+    } else {
+      progress.message = `完成 · ${Number(payload.duration || 0).toFixed(1)}s`
+      lastOutput.value = payload
+      showToast('配音完成，已导出 MP3', 'success')
+    }
     call('save_project', rows.value, {
       source_lang: config.source_lang,
       target_lang: config.target_lang,
@@ -689,19 +803,19 @@ function stopPlayback() {
   playingId.value = null
 }
 
-async function playRow(row) {
-  if (!row?.segment_path || row.status !== 'done') {
-    showToast('该行尚未生成成功，无法试听', 'error')
+async function playAudioPath(path, playKey) {
+  if (!path) {
+    showToast('没有可试听的音频', 'error')
     return
   }
-  // Toggle pause if same row
-  if (playingId.value === row.id && audioEl && !audioEl.paused) {
+  // Toggle pause if same item
+  if (playingId.value === playKey && audioEl && !audioEl.paused) {
     audioEl.pause()
     playingId.value = null
     return
   }
   stopPlayback()
-  const res = await call('get_audio_data_url', row.segment_path)
+  const res = await call('get_audio_data_url', path)
   if (!res.ok) {
     showToast(res.error || '读取音频失败', 'error')
     return
@@ -717,11 +831,28 @@ async function playRow(row) {
   }
   try {
     await audioEl.play()
-    playingId.value = row.id
+    playingId.value = playKey
   } catch (err) {
     playingId.value = null
     showToast(err?.message || '无法播放', 'error')
   }
+}
+
+async function playRow(row) {
+  if (!row?.segment_path || row.status !== 'done') {
+    showToast('该行尚未生成成功，无法试听', 'error')
+    return
+  }
+  await playAudioPath(row.segment_path, row.id)
+}
+
+/** 音色库参考音频试听 */
+async function playVoice(voice) {
+  if (!voice?.path) {
+    showToast('音色文件路径无效', 'error')
+    return
+  }
+  await playAudioPath(voice.path, `voice:${voice.id}`)
 }
 
 watch(
@@ -732,10 +863,19 @@ watch(
   { deep: true },
 )
 
+async function refreshVersion() {
+  const res = await call('get_version')
+  if (res.ok && res.data?.version) {
+    appVersion.value = res.data.version
+    appDisplay.value = res.data.display || `${APP_NAME} v${res.data.version}`
+  }
+}
+
 onMounted(async () => {
   themeId.value = applyTheme(loadThemeId())
   onEvent(applyEvent)
   apiStatusMsg.value = '初始化…'
+  await refreshVersion()
   await refreshConfig()
   await refreshLanguages()
   await refreshVoices()
@@ -751,8 +891,8 @@ onMounted(async () => {
       <div class="nav-brand">
         <div class="logo">VG</div>
         <div class="nav-brand-text">
-          <strong>VoiceGen</strong>
-          <span>多人配音</span>
+          <strong>{{ appNameEn }}</strong>
+          <span>{{ appName }}</span>
         </div>
       </div>
 
@@ -791,6 +931,7 @@ onMounted(async () => {
         </div>
         <VgBadge :tone="apiBadgeTone" dot>{{ apiStatusMsg || 'API' }}</VgBadge>
         <div class="nav-footer-meta">{{ langLabel(config.source_lang) }} → {{ langLabel(config.target_lang) }}</div>
+        <div class="nav-version" :title="appDisplay">v{{ appVersion }}</div>
       </div>
     </aside>
 
@@ -833,15 +974,15 @@ onMounted(async () => {
         <div class="toolbar toolbar-wrap">
           <div class="toolbar-group">
             <VgButton size="sm" icon="plus" :icon-size="14" @click="addRow">添加行</VgButton>
-            <VgButton size="sm" icon="import" :icon-size="14" @click="importTable">导入</VgButton>
-            <VgButton size="sm" icon="export" :icon-size="14" @click="exportTable('csv')">CSV</VgButton>
-            <VgButton size="sm" icon="export" :icon-size="14" @click="exportTable('json')">JSON</VgButton>
+            <VgButton size="sm" icon="import" :icon-size="14" title="从文件导入台词表" @click="importTable">导入表格</VgButton>
+            <VgButton size="sm" icon="export" :icon-size="14" title="导出当前表格为文件" @click="exportTable('csv')">导出表格</VgButton>
+            <VgButton size="sm" variant="ghost" icon="export" :icon-size="14" title="导出 JSON 格式" @click="exportTable('json')">导出 JSON</VgButton>
             <VgButton
               size="sm"
               variant="ghost"
               icon="export"
               :icon-size="14"
-              title="导出空白示例 CSV，填写后可再导入"
+              title="导出空白示例表格，填写后可再导入"
               @click="exportTableTemplate"
             >
               导出模板
@@ -931,14 +1072,16 @@ onMounted(async () => {
           <table class="script">
             <thead>
               <tr>
-                <th class="check">用</th>
+                <th class="check" title="全选 / 取消全选">
+                  <VgCheckbox :model-value="allSelected" @update:model-value="toggleSelectAll" />
+                </th>
                 <th class="idx">#</th>
                 <th class="speaker-cell">角色</th>
                 <th class="voice-cell">音色</th>
                 <th class="text-col">原文（{{ config.source_lang }}）</th>
                 <th class="text-col">配音文本（{{ config.target_lang }}）</th>
                 <th class="speed-cell">语速</th>
-                <th style="width: 120px">风格</th>
+                <th class="style-col">风格</th>
                 <th class="status-cell">状态</th>
                 <th class="ops-cell">操作</th>
               </tr>
@@ -989,8 +1132,13 @@ onMounted(async () => {
                     :step="0.05"
                   />
                 </td>
-                <td>
-                  <VgInput v-model="row.style" bare size="sm" placeholder="默认" />
+                <td class="style-col">
+                  <VgTextarea
+                    v-model="row.style"
+                    bare
+                    auto-height
+                    placeholder="默认风格"
+                  />
                 </td>
                 <td class="status-cell">
                   <VgStatus :status="row.status || 'idle'" :title="row.error || ''">
@@ -1008,6 +1156,16 @@ onMounted(async () => {
                     :disabled="row.status !== 'done' || !row.segment_path"
                     :title="row.status === 'done' && row.segment_path ? (playingId === row.id ? '暂停' : '试听') : '生成成功后可试听'"
                     @click="playRow(row)"
+                  />
+                  <VgButton
+                    size="sm"
+                    variant="ghost"
+                    icon="refresh"
+                    :icon-size="13"
+                    icon-only
+                    title="重新生成本条"
+                    :disabled="generating || translating || !speakText(row)"
+                    @click="regenerateRow(row)"
                   />
                   <VgButton size="sm" variant="ghost" icon="arrow-up" :icon-size="13" icon-only title="上移" @click="moveRow(index, -1)" />
                   <VgButton size="sm" variant="ghost" icon="arrow-down" :icon-size="13" icon-only title="下移" @click="moveRow(index, 1)" />
@@ -1081,6 +1239,15 @@ onMounted(async () => {
                 <td class="voice-ext-col">{{ (v.ext || '').replace(/^\./, '').toUpperCase() || '—' }}</td>
                 <td class="voice-size-col">{{ formatFileSize(v.size) }}</td>
                 <td class="voice-ops-col">
+                  <VgButton
+                    size="sm"
+                    :variant="playingId === `voice:${v.id}` ? 'primary' : 'ghost'"
+                    :icon="playingId === `voice:${v.id}` ? 'pause' : 'listen'"
+                    :icon-size="13"
+                    icon-only
+                    :title="playingId === `voice:${v.id}` ? '暂停' : '试听参考音'"
+                    @click="playVoice(v)"
+                  />
                   <VgButton size="sm" variant="danger" icon="delete" :icon-size="13" @click="deleteVoice(v.id)">删除</VgButton>
                 </td>
               </tr>
@@ -1139,6 +1306,27 @@ onMounted(async () => {
             </VgField>
           </VgCard>
 
+          <VgCard title="并发性能">
+            <VgField
+              label="TTS 并发生成线程数"
+              hint="默认 4。过大可能触发 API 限流；相同音色会缓存参考音频。"
+            >
+              <VgInput v-model="settingsForm.tts_workers" type="number" :min="1" :max="12" :step="1" />
+            </VgField>
+            <VgField
+              label="翻译并发线程数"
+              hint="直译/本土化走 mimo-v2.5-pro 的 /chat/completions，多批并行更慢会变成更快。"
+            >
+              <VgInput v-model="settingsForm.translate_workers" type="number" :min="1" :max="8" :step="1" />
+            </VgField>
+            <VgField
+              label="翻译每批行数"
+              hint="默认 8。批次越小首屏越快，过大单请求更慢。"
+            >
+              <VgInput v-model="settingsForm.translate_batch_size" type="number" :min="1" :max="30" :step="1" />
+            </VgField>
+          </VgCard>
+
           <VgCard title="外观 · 马卡龙换肤">
             <p class="hint" style="margin: -6px 0 12px">Linear 风格界面，一键切换马卡龙配色（本地记忆）</p>
             <div class="theme-grid">
@@ -1158,6 +1346,16 @@ onMounted(async () => {
               </button>
             </div>
           </VgCard>
+
+          <VgCard title="关于">
+            <div class="about-version">
+              <div class="about-name">{{ appName }}</div>
+              <div class="about-meta">{{ appNameEn }} · 版本 <strong>v{{ appVersion }}</strong></div>
+              <p class="hint" style="margin: 10px 0 0">
+                pywebview + Vue · MiMo VoiceClone / Pro · 本地音色克隆配音
+              </p>
+            </div>
+          </VgCard>
         </div>
 
         <VgButton fab variant="primary" icon="save" :icon-size="18" title="保存设置" @click="saveSettings">
@@ -1167,6 +1365,7 @@ onMounted(async () => {
     </main>
 
     <div v-if="toast" class="toast" :class="toast.type">{{ toast.message }}</div>
+    <VgDialog />
   </div>
 </template>
 

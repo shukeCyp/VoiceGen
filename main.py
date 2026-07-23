@@ -29,6 +29,7 @@ ROOT = _bootstrap_path()
 from backend.api import Api, set_window
 from backend.config_store import load_config
 from backend.paths import FRONTEND_DIST, FRONTEND_INDEX, RESOURCE_ROOT, VOICES_DIR
+from backend.version import version_info
 
 
 def resolve_ui_url(dev_url: str | None) -> str:
@@ -69,14 +70,17 @@ def main() -> int:
     api = Api()
     url = resolve_ui_url(args.dev)
 
+    ver = version_info()
+    # Match default lilac theme — dark #0f1419 caused a black flash before CSS/Vue mount
+    window_bg = str(cfg.get("window_bg") or "#F4F2FB").strip() or "#F4F2FB"
     window = webview.create_window(
-        title="多人配音工具",
+        title=ver["window_title"],
         url=url,
         js_api=api,
         width=int(cfg.get("window_width") or 1280),
         height=int(cfg.get("window_height") or 860),
         min_size=(960, 640),
-        background_color="#0f1419",
+        background_color=window_bg,
     )
     set_window(window)
 

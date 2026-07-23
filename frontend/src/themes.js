@@ -72,9 +72,26 @@ export function saveThemeId(id) {
   }
 }
 
+const THEME_BG = {
+  lilac: '#f4f2fb',
+  peach: '#fff5f1',
+  mint: '#f0faf5',
+  sky: '#f2f7fd',
+  rose: '#fdf2f6',
+  lemon: '#fbf9ef',
+  lavender: '#f3f3f7',
+  ink: '#0e0f13',
+}
+
 export function applyTheme(id) {
   const theme = THEMES.find((t) => t.id === id) || THEMES[0]
   document.documentElement.setAttribute('data-theme', theme.id)
+  const bg = THEME_BG[theme.id] || THEME_BG.lilac
+  document.documentElement.style.background = bg
+  document.documentElement.style.colorScheme = theme.dark ? 'dark' : 'light'
+  if (document.body) {
+    document.body.style.background = bg
+  }
   if (theme.dark) {
     document.documentElement.classList.add('theme-dark')
   } else {

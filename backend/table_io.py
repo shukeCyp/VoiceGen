@@ -108,26 +108,54 @@ def normalize_rows(rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     return result
 
 
-def export_csv(rows: list[dict[str, Any]]) -> str:
+# CSV 中文表头（导出默认）；导入仍兼容英文表头
+CSV_HEADERS_ZH = ["角色", "音色", "原文", "配音文本", "语速", "风格", "启用"]
+CSV_FIELD_MAP = {
+    "角色": "speaker",
+    "音色": "voice",
+    "原文": "text",
+    "配音文本": "tts_text",
+    "语速": "speed",
+    "风格": "style",
+    "启用": "enabled",
+}
+
+
+def export_csv(rows: list[dict[str, Any]], *, chinese_headers: bool = True) -> str:
+    """Export rows as CSV. Default headers are Chinese for templates and sharing."""
     buf = io.StringIO()
-    writer = csv.DictWriter(
-        buf,
-        fieldnames=["speaker", "voice", "text", "tts_text", "speed", "style", "enabled"],
-        extrasaction="ignore",
-    )
-    writer.writeheader()
-    for row in rows:
-        writer.writerow(
-            {
-                "speaker": row.get("speaker", ""),
-                "voice": row.get("voice", ""),
-                "text": row.get("text", ""),
-                "tts_text": row.get("tts_text", ""),
-                "speed": row.get("speed", 1.0),
-                "style": row.get("style", ""),
-                "enabled": row.get("enabled", True),
-            }
-        )
+    if chinese_headers:
+        fieldnames = list(CSV_HEADERS_ZH)
+        writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "角色": row.get("speaker", ""),
+                    "音色": row.get("voice", ""),
+                    "原文": row.get("text", ""),
+                    "配音文本": row.get("tts_text", ""),
+                    "语速": row.get("speed", 1.0),
+                    "风格": row.get("style", ""),
+                    "启用": row.get("enabled", True),
+                }
+            )
+    else:
+        fieldnames = ["speaker", "voice", "text", "tts_text", "speed", "style", "enabled"]
+        writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "speaker": row.get("speaker", ""),
+                    "voice": row.get("voice", ""),
+                    "text": row.get("text", ""),
+                    "tts_text": row.get("tts_text", ""),
+                    "speed": row.get("speed", 1.0),
+                    "style": row.get("style", ""),
+                    "enabled": row.get("enabled", True),
+                }
+            )
     return buf.getvalue()
 
 

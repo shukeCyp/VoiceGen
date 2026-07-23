@@ -14,6 +14,7 @@ ROOT = Path(SPECPATH).resolve()
 datas = [
     (str(ROOT / "frontend" / "dist"), "frontend/dist"),
     (str(ROOT / "voices" / "README.txt"), "voices"),
+    (str(ROOT / "VERSION"), "."),
 ]
 
 binaries = []
@@ -27,6 +28,7 @@ hiddenimports = [
     "backend.mimo_tts",
     "backend.paths",
     "backend.table_io",
+    "backend.version",
     "backend.voices",
     "webview",
     "bottle",

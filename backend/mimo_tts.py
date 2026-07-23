@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -42,9 +43,22 @@ def validate_key_for_base_url(api_key: str, base_url: str) -> None:
         raise ValueError("API Key 需以 tp- 或 sk- 开头")
 
 
+_voice_b64_cache: dict[tuple[str, float, int], str] = {}
+_voice_cache_lock = threading.Lock()
+
+
 def encode_reference_audio(path: Path) -> str:
+    """Encode reference audio; cache by path+mtime+size for concurrent reuse."""
+    path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"参考音色不存在: {path}")
+    st = path.stat()
+    key = (str(path.resolve()), float(st.st_mtime), int(st.st_size))
+    with _voice_cache_lock:
+        hit = _voice_b64_cache.get(key)
+        if hit is not None:
+            return hit
+
     raw = path.read_bytes()
     encoded = base64.b64encode(raw)
     if len(encoded) > MAX_ENCODED_REFERENCE_BYTES:
@@ -58,7 +72,13 @@ def encode_reference_audio(path: Path) -> str:
         "ogg": "audio/ogg",
         "opus": "audio/opus",
     }.get(suffix, "audio/wav")
-    return f"data:{mime};base64," + encoded.decode("ascii")
+    voice_data = f"data:{mime};base64," + encoded.decode("ascii")
+    with _voice_cache_lock:
+        # bound cache size
+        if len(_voice_b64_cache) > 24:
+            _voice_b64_cache.clear()
+        _voice_b64_cache[key] = voice_data
+    return voice_data
 
 
 def build_payload(text: str, style: str, voice_data: str, model: str = MODEL_ID) -> dict:

@@ -6,11 +6,12 @@ import json
 import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from . import audio_utils, config_store, languages, mimo_chat, mimo_tts, table_io, voices
+from . import audio_utils, config_store, languages, mimo_chat, mimo_tts, table_io, version, voices
 from .paths import DATA_DIR, OUTPUT_DIR, SEGMENTS_DIR, VOICES_DIR
 
 # Progress callbacks into the UI thread via evaluate_js
@@ -20,6 +21,7 @@ _job_lock = threading.Lock()
 _job_running = False
 _translate_lock = threading.Lock()
 _translate_running = False
+_emit_lock = threading.Lock()
 
 
 def set_window(window) -> None:
@@ -35,12 +37,16 @@ def _emit(event: str, payload: dict[str, Any]) -> None:
 
         raw = json.dumps({"event": event, "payload": payload}, ensure_ascii=False)
         b64 = base64.b64encode(raw.encode("utf-8")).decode("ascii")
-        _window.evaluate_js(
-            "(() => {"
-            f"const raw = JSON.parse(atob('{b64}'));"
-            "window.__voicegen_event && window.__voicegen_event(raw.event, raw.payload);"
-            "})()"
-        )
+        # atob() alone is Latin-1; must re-decode as UTF-8 for Chinese text
+        with _emit_lock:
+            _window.evaluate_js(
+                "(() => {"
+                "const b64ToUtf8 = (b64) => new TextDecoder('utf-8').decode("
+                "Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));"
+                f"const raw = JSON.parse(b64ToUtf8('{b64}'));"
+                "window.__voicegen_event && window.__voicegen_event(raw.event, raw.payload);"
+                "})()"
+            )
     except Exception:
         pass
 
@@ -59,6 +65,13 @@ def _err(message: str, **extra) -> dict[str, Any]:
 
 class Api:
     """Exposed to the Vue frontend via pywebview."""
+
+    # ── version ─────────────────────────────────────────────
+    def get_version(self) -> dict:
+        try:
+            return _ok(version.version_info())
+        except Exception as exc:
+            return _err(str(exc))
 
     # ── config ──────────────────────────────────────────────
     def get_config(self) -> dict:
@@ -386,7 +399,6 @@ class Api:
                 return
 
             mimo_chat.check_llm(base_url, api_key, llm_model)
-            # batch with progress
             work = []
             for row in rows or []:
                 if only_enabled and not row.get("enabled", True):
@@ -405,20 +417,34 @@ class Api:
                 _emit("translate_error", {"error": "没有可翻译的原文行"})
                 return
 
-            all_results: list[dict] = []
-            total_batches = (len(work) + mimo_chat.BATCH_SIZE - 1) // mimo_chat.BATCH_SIZE
-            for bi, start in enumerate(range(0, len(work), mimo_chat.BATCH_SIZE)):
-                chunk = work[start : start + mimo_chat.BATCH_SIZE]
-                _emit(
-                    "translate_progress",
-                    {
-                        "batch": bi + 1,
-                        "total_batches": total_batches,
-                        "done": len(all_results),
-                        "total": len(work),
-                        "message": f"翻译批次 {bi + 1}/{total_batches}",
-                    },
-                )
+            batch_size = int(
+                cfg.get("translate_batch_size") or mimo_chat.BATCH_SIZE or 8
+            )
+            batch_size = max(1, min(30, batch_size))
+            workers = int(cfg.get("translate_workers") or 3)
+            workers = max(1, min(8, workers))
+
+            chunks: list[tuple[int, list]] = []
+            for bi, start in enumerate(range(0, len(work), batch_size)):
+                chunks.append((bi, work[start : start + batch_size]))
+            total_batches = len(chunks)
+
+            _emit(
+                "translate_progress",
+                {
+                    "batch": 0,
+                    "total_batches": total_batches,
+                    "done": 0,
+                    "total": len(work),
+                    "message": f"并发翻译 {total_batches} 批 × {workers} 线程 · {llm_model}",
+                },
+            )
+
+            batch_results: dict[int, list[dict]] = {}
+            done_count = 0
+            done_lock = threading.Lock()
+
+            def _run_one_batch(bi: int, chunk: list) -> tuple[int, list[dict]]:
                 translated = mimo_chat.translate_batch(
                     chunk,
                     mode=mode_key,  # type: ignore[arg-type]
@@ -428,8 +454,35 @@ class Api:
                     api_key=api_key,
                     model=llm_model,
                 )
-                for item in translated:
-                    all_results.append({"id": item["id"], "tts_text": item["text"]})
+                return bi, [{"id": t["id"], "tts_text": t["text"]} for t in translated]
+
+            with ThreadPoolExecutor(max_workers=min(workers, total_batches)) as pool:
+                futures = [
+                    pool.submit(_run_one_batch, bi, chunk) for bi, chunk in chunks
+                ]
+                for fut in as_completed(futures):
+                    bi, items = fut.result()
+                    batch_results[bi] = items
+                    with done_lock:
+                        done_count += len(items)
+                        finished = len(batch_results)
+                    # Stream partial results so UI updates as each batch finishes
+                    _emit(
+                        "translate_progress",
+                        {
+                            "batch": finished,
+                            "total_batches": total_batches,
+                            "done": done_count,
+                            "total": len(work),
+                            "message": f"翻译完成 {done_count}/{len(work)}",
+                            "results": items,
+                            "partial": True,
+                        },
+                    )
+
+            all_results: list[dict] = []
+            for bi in range(total_batches):
+                all_results.extend(batch_results.get(bi) or [])
 
             config_store.save_config({"source_lang": src, "target_lang": tgt})
             _emit(
@@ -441,6 +494,8 @@ class Api:
                     "target_lang": tgt,
                     "model": llm_model,
                     "count": len(all_results),
+                    "workers": workers,
+                    "batch_size": batch_size,
                 },
             )
         except Exception as exc:
@@ -508,6 +563,12 @@ class Api:
                 or cfg.get("target_lang")
                 or config_store.DEFAULT_TARGET_LANG
             )
+            workers = int(
+                options.get("tts_workers")
+                or cfg.get("tts_workers")
+                or config_store.DEFAULT_TTS_WORKERS
+            )
+            workers = max(1, min(12, workers))
 
             try:
                 mimo_tts.check_service(base_url, api_key, model)
@@ -539,16 +600,22 @@ class Api:
 
             _emit(
                 "generate_start",
-                {"total": total, "job_dir": str(job_dir)},
+                {
+                    "total": total,
+                    "job_dir": str(job_dir),
+                    "workers": workers,
+                },
             )
 
-            segment_paths: list[Path] = []
-            results: list[dict] = []
-
-            for index, row in enumerate(work_rows):
+            def _synth_one(index: int, row: dict) -> tuple[int, dict, Path | None]:
                 if _cancel_flag.is_set():
-                    _emit("generate_cancelled", {"done": index, "total": total})
-                    return
+                    return index, {
+                        "row_id": str(row.get("id") or index),
+                        "status": "error",
+                        "duration": None,
+                        "segment_path": "",
+                        "error": "已取消",
+                    }, None
 
                 row_id = str(row.get("id") or index)
                 voice_id = str(row.get("voice") or "").strip()
@@ -567,6 +634,7 @@ class Api:
                         "status": "running",
                         "speaker": speaker,
                         "text": text[:80],
+                        "workers": workers,
                     },
                 )
 
@@ -586,9 +654,10 @@ class Api:
                         model=model,
                         style=style,
                     )
+                    if _cancel_flag.is_set():
+                        raise RuntimeError("已取消")
                     audio_utils.apply_speed(raw_wav, final_wav, speed)
                     duration = audio_utils.probe_duration(final_wav)
-                    segment_paths.append(final_wav)
                     item = {
                         "row_id": row_id,
                         "status": "done",
@@ -596,7 +665,6 @@ class Api:
                         "segment_path": str(final_wav),
                         "error": "",
                     }
-                    results.append(item)
                     _emit(
                         "generate_progress",
                         {
@@ -608,6 +676,7 @@ class Api:
                             "segment_path": str(final_wav),
                         },
                     )
+                    return index, item, final_wav
                 except Exception as exc:
                     item = {
                         "row_id": row_id,
@@ -616,7 +685,6 @@ class Api:
                         "segment_path": "",
                         "error": str(exc),
                     }
-                    results.append(item)
                     _emit(
                         "generate_progress",
                         {
@@ -627,17 +695,69 @@ class Api:
                             "error": str(exc),
                         },
                     )
-                    # Continue other lines by default
                     if options.get("stop_on_error"):
-                        _emit("generate_error", {"error": str(exc), "results": results})
-                        return
+                        _cancel_flag.set()
+                    return index, item, None
 
-            if _cancel_flag.is_set():
-                _emit("generate_cancelled", {"done": len(results), "total": total})
+            # Concurrent TTS; keep original order for MP3 concat
+            by_index: dict[int, tuple[dict, Path | None]] = {}
+            max_workers = min(workers, total)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [
+                    pool.submit(_synth_one, i, row) for i, row in enumerate(work_rows)
+                ]
+                for fut in as_completed(futures):
+                    index, item, path = fut.result()
+                    by_index[index] = (item, path)
+
+            if _cancel_flag.is_set() and len(by_index) < total:
+                _emit(
+                    "generate_cancelled",
+                    {"done": len(by_index), "total": total},
+                )
                 return
+
+            results: list[dict] = []
+            segment_paths: list[Path] = []
+            for i in range(total):
+                item, path = by_index.get(i, (
+                    {
+                        "row_id": str(work_rows[i].get("id") or i),
+                        "status": "error",
+                        "duration": None,
+                        "segment_path": "",
+                        "error": "未生成",
+                    },
+                    None,
+                ))
+                results.append(item)
+                if path is not None and item.get("status") == "done":
+                    segment_paths.append(path)
 
             if not segment_paths:
                 _emit("generate_error", {"error": "全部行生成失败，无法合并 MP3", "results": results})
+                return
+
+            skip_merge = bool(options.get("skip_final_merge"))
+            if skip_merge:
+                # Single-row (or partial) regen: keep segment files, no full MP3 concat
+                total_dur = sum(
+                    float(by_index[i][0].get("duration") or 0)
+                    for i in range(total)
+                    if by_index.get(i) and by_index[i][0].get("status") == "done"
+                )
+                _emit(
+                    "generate_done",
+                    {
+                        "output": None,
+                        "duration": total_dur,
+                        "segments": len(segment_paths),
+                        "results": results,
+                        "job_dir": str(job_dir),
+                        "workers": workers,
+                        "skip_final_merge": True,
+                    },
+                )
                 return
 
             out_name = options.get("output_name") or f"dubbing_{stamp}.mp3"
@@ -645,7 +765,15 @@ class Api:
                 out_name = f"{out_name}.mp3"
             out_path = OUTPUT_DIR / out_name
 
-            _emit("generate_progress", {"index": total, "total": total, "status": "merging"})
+            _emit(
+                "generate_progress",
+                {
+                    "index": total,
+                    "total": total,
+                    "status": "merging",
+                    "workers": workers,
+                },
+            )
             merge = audio_utils.concat_to_mp3(segment_paths, out_path, gap_ms=gap_ms)
 
             _emit(
@@ -656,6 +784,8 @@ class Api:
                     "segments": merge["segments"],
                     "results": results,
                     "job_dir": str(job_dir),
+                    "workers": workers,
+                    "skip_final_merge": False,
                 },
             )
         except Exception as exc:
@@ -702,18 +832,24 @@ class Api:
             return _err(str(exc))
 
     def get_audio_data_url(self, path: str) -> dict:
-        """Return a data-URL for preview playback (only under project output/)."""
+        """Return a data-URL for preview (only under project output/ or voices/)."""
         try:
             import base64
 
             p = Path(path).expanduser().resolve()
             if not p.is_file():
                 return _err("音频文件不存在")
-            out_root = OUTPUT_DIR.resolve()
-            try:
-                p.relative_to(out_root)
-            except ValueError:
-                return _err("只能试听本项目 output 目录下的音频")
+            allowed_roots = (OUTPUT_DIR.resolve(), VOICES_DIR.resolve())
+            allowed = False
+            for root in allowed_roots:
+                try:
+                    p.relative_to(root)
+                    allowed = True
+                    break
+                except ValueError:
+                    continue
+            if not allowed:
+                return _err("只能试听本项目 output 或 voices 目录下的音频")
             raw = p.read_bytes()
             if len(raw) > 25 * 1024 * 1024:
                 return _err("音频过大，无法在界面内预览")
@@ -724,6 +860,8 @@ class Api:
                 ".m4a": "audio/mp4",
                 ".ogg": "audio/ogg",
                 ".flac": "audio/flac",
+                ".aac": "audio/aac",
+                ".opus": "audio/opus",
             }.get(ext, "audio/wav")
             url = f"data:{mime};base64," + base64.b64encode(raw).decode("ascii")
             return _ok({"url": url, "path": str(p), "mime": mime})

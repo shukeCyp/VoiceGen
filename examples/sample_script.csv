@@ -1,4 +1,4 @@
-speaker,voice,text,tts_text,speed,style,enabled
+角色,音色,原文,配音文本,语速,风格,启用
 旁白,旁白,欢迎使用 VoiceGen 多人配音工具。,,1.0,沉稳清晰,true
 角色A,角色A,把参考音色放到 voices 文件夹，就能在表格里选择。,,1.0,,true
 角色B,角色B,设置好语速后，一键生成整轨 MP3。,,1.1,轻快自然,true

@@ -2,6 +2,7 @@
   "name": "voicegen-frontend",
   "private": true,
   "version": "1.0.0",
+  "description": "多人配音工具 VoiceGen",
   "type": "module",
   "scripts": {
     "dev": "vite",

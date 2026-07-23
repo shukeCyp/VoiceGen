@@ -4,8 +4,9 @@
 
 ## 使用教程
 
-- 图文教程：[`docs/使用教程.md`](docs/使用教程.md)
-- 示意短视频：[`docs/assets/tutorial-preview.mp4`](docs/assets/tutorial-preview.mp4)（概念演示，非真实录屏）
+- **分步图文教程（含界面截图）**：[`docs/使用教程.md`](docs/使用教程.md)  
+- 截图目录：[`docs/assets/screens/`](docs/assets/screens/)  
+- 示意短视频（概念演示，非录屏）：[`docs/assets/tutorial-preview.mp4`](docs/assets/tutorial-preview.mp4)
 
 ## 功能
 

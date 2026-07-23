@@ -30,6 +30,7 @@ hiddenimports = [
     "backend.table_io",
     "backend.version",
     "backend.voices",
+    "backend.app_log",
     "webview",
     "bottle",
     "proxy_tools",

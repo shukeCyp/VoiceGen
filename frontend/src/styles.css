@@ -751,6 +751,76 @@ input[type='checkbox'] {
   font-weight: 650;
 }
 
+/* 表格列显示菜单 */
+.col-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.col-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 180px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.col-menu-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.col-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.col-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.col-menu-item.locked {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.col-menu-item input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.col-menu-tag {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.col-menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Workspace（右侧：顶栏固定，仅下方页面区域滚动） ───── */
 .workspace {
   flex: 1;

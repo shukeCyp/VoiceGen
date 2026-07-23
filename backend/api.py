@@ -12,7 +12,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import audio_utils, config_store, languages, mimo_chat, mimo_tts, table_io, version, voices
-from .paths import DATA_DIR, OUTPUT_DIR, SEGMENTS_DIR, VOICES_DIR
+from .app_log import get_logger
+from .paths import DATA_DIR, LOG_DIR, OUTPUT_DIR, SEGMENTS_DIR, VOICES_DIR
+
+log = get_logger("api")
 
 # Progress callbacks into the UI thread via evaluate_js
 _window = None
@@ -92,8 +95,10 @@ class Api:
             base_url = cfg.get("base_url") or mimo_tts.DEFAULT_BASE_URL
             tts_model = cfg.get("model") or mimo_tts.MODEL_ID
             llm_model = cfg.get("llm_model") or mimo_chat.LLM_MODEL
+            log.info("检测 API · base=%s · tts=%s · llm=%s", base_url, tts_model, llm_model)
             tts = mimo_tts.check_service(base_url, key, tts_model)
             llm = mimo_chat.check_llm(base_url, key, llm_model)
+            log.info("API 检测通过 · tts=%s · llm=%s", tts_model, llm_model)
             return _ok(
                 {
                     "ok": True,
@@ -104,6 +109,7 @@ class Api:
                 }
             )
         except Exception as exc:
+            log.warning("API 检测失败: %s", exc)
             return _err(str(exc))
 
     def list_languages(self) -> dict:
@@ -336,6 +342,13 @@ class Api:
                 return _err("配音任务进行中，请稍候")
             _translate_running = True
 
+        log.info(
+            "开始翻译 · mode=%s · src=%s · tgt=%s · rows=%s",
+            mode,
+            source_lang,
+            target_lang,
+            len(rows or []),
+        )
         thread = threading.Thread(
             target=self._run_translate,
             args=(rows or [], mode, source_lang, target_lang, only_enabled),
@@ -485,6 +498,14 @@ class Api:
                 all_results.extend(batch_results.get(bi) or [])
 
             config_store.save_config({"source_lang": src, "target_lang": tgt})
+            log.info(
+                "翻译完成 · mode=%s · count=%s · workers=%s · batch=%s · model=%s",
+                mode_key,
+                len(all_results),
+                workers,
+                batch_size,
+                llm_model,
+            )
             _emit(
                 "translate_done",
                 {
@@ -499,6 +520,7 @@ class Api:
                 },
             )
         except Exception as exc:
+            log.exception("翻译失败: %s", exc)
             _emit(
                 "translate_error",
                 {"error": str(exc), "trace": traceback.format_exc()[-600:]},
@@ -540,6 +562,12 @@ class Api:
             _cancel_flag.clear()
 
         options = options or {}
+        log.info(
+            "开始配音 · rows=%s · skip_merge=%s · workers=%s",
+            len(rows or []),
+            options.get("skip_final_merge"),
+            options.get("tts_workers"),
+        )
         thread = threading.Thread(
             target=self._run_generate,
             args=(rows or [], options),
@@ -775,6 +803,13 @@ class Api:
                 },
             )
             merge = audio_utils.concat_to_mp3(segment_paths, out_path, gap_ms=gap_ms)
+            log.info(
+                "配音完成 · output=%s · duration=%.2fs · segments=%s · workers=%s",
+                merge["path"],
+                float(merge.get("duration") or 0),
+                merge.get("segments"),
+                workers,
+            )
 
             _emit(
                 "generate_done",
@@ -789,6 +824,7 @@ class Api:
                 },
             )
         except Exception as exc:
+            log.exception("配音失败: %s", exc)
             _emit(
                 "generate_error",
                 {"error": str(exc), "trace": traceback.format_exc()[-800:]},
@@ -874,8 +910,27 @@ class Api:
                 "voices_dir": str(VOICES_DIR.resolve()),
                 "output_dir": str(OUTPUT_DIR.resolve()),
                 "data_dir": str(DATA_DIR.resolve()),
+                "log_dir": str(LOG_DIR.resolve()),
             }
         )
+
+    def open_log_folder(self) -> dict:
+        try:
+            import subprocess
+            import sys
+
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            path = str(LOG_DIR.resolve())
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            elif sys.platform == "win32":
+                subprocess.Popen(["explorer", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+            return _ok(path)
+        except Exception as exc:
+            log.warning("打开日志目录失败: %s", exc)
+            return _err(str(exc))
 
     def new_empty_row(self) -> dict:
         return _ok(table_io.new_row())

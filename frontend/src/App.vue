@@ -20,6 +20,81 @@ const appDisplay = ref(APP_DISPLAY)
 const appName = APP_NAME
 const appNameEn = APP_NAME_EN
 
+/** 配音表格列显示（本地记忆） */
+const COL_STORAGE_KEY = 'voicegen_table_columns_v1'
+const TABLE_COLUMN_DEFS = [
+  { key: 'check', label: '选用', locked: true },
+  { key: 'idx', label: '序号', locked: true },
+  { key: 'speaker', label: '角色' },
+  { key: 'voice', label: '音色' },
+  { key: 'text', label: '原文' },
+  { key: 'tts_text', label: '配音文本' },
+  { key: 'speed', label: '语速' },
+  { key: 'style', label: '风格' },
+  { key: 'status', label: '状态' },
+  { key: 'ops', label: '操作', locked: true },
+]
+
+function defaultColumnVisibility() {
+  const o = {}
+  for (const c of TABLE_COLUMN_DEFS) o[c.key] = true
+  return o
+}
+
+function loadColumnVisibility() {
+  const base = defaultColumnVisibility()
+  try {
+    const raw = localStorage.getItem(COL_STORAGE_KEY)
+    if (!raw) return base
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object') {
+      for (const c of TABLE_COLUMN_DEFS) {
+        if (c.locked) base[c.key] = true
+        else if (typeof parsed[c.key] === 'boolean') base[c.key] = parsed[c.key]
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return base
+}
+
+const colVisible = reactive(loadColumnVisibility())
+const colMenuOpen = ref(false)
+
+function saveColumnVisibility() {
+  try {
+    const payload = {}
+    for (const c of TABLE_COLUMN_DEFS) {
+      payload[c.key] = c.locked ? true : Boolean(colVisible[c.key])
+    }
+    localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    /* ignore */
+  }
+}
+
+function setColumnVisible(key, visible) {
+  const def = TABLE_COLUMN_DEFS.find((c) => c.key === key)
+  if (!def || def.locked) return
+  colVisible[key] = Boolean(visible)
+  // 至少保留原文或配音文本之一
+  if (!colVisible.text && !colVisible.tts_text) {
+    if (key === 'text') colVisible.tts_text = true
+    else colVisible.text = true
+  }
+  saveColumnVisibility()
+}
+
+function resetColumns() {
+  Object.assign(colVisible, defaultColumnVisibility())
+  saveColumnVisibility()
+}
+
+function isCol(key) {
+  return colVisible[key] !== false
+}
+
 const voices = ref([])
 const voicesDir = ref('')
 const languages = ref([])
@@ -871,9 +946,16 @@ async function refreshVersion() {
   }
 }
 
+function onDocCloseColMenu(e) {
+  if (!colMenuOpen.value) return
+  const wrap = e.target?.closest?.('.col-menu-wrap')
+  if (!wrap) colMenuOpen.value = false
+}
+
 onMounted(async () => {
   themeId.value = applyTheme(loadThemeId())
   onEvent(applyEvent)
+  document.addEventListener('mousedown', onDocCloseColMenu)
   apiStatusMsg.value = '初始化…'
   await refreshVersion()
   await refreshConfig()
@@ -998,6 +1080,40 @@ onMounted(async () => {
               一键清空
             </VgButton>
             <VgButton size="sm" variant="ghost" icon="folder" :icon-size="14" @click="openOutput">输出目录</VgButton>
+            <div class="col-menu-wrap">
+              <VgButton
+                size="sm"
+                variant="ghost"
+                icon="setting"
+                :icon-size="14"
+                title="显示 / 隐藏表格列"
+                @click="colMenuOpen = !colMenuOpen"
+              >
+                显示列
+              </VgButton>
+              <div v-if="colMenuOpen" class="col-menu" @mousedown.stop>
+                <div class="col-menu-title">表格列显示</div>
+                <label
+                  v-for="c in TABLE_COLUMN_DEFS"
+                  :key="c.key"
+                  class="col-menu-item"
+                  :class="{ locked: c.locked }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="isCol(c.key)"
+                    :disabled="c.locked"
+                    @change="setColumnVisible(c.key, $event.target.checked)"
+                  />
+                  <span>{{ c.label }}</span>
+                  <span v-if="c.locked" class="col-menu-tag">固定</span>
+                </label>
+                <div class="col-menu-actions">
+                  <VgButton size="sm" variant="ghost" @click="resetColumns">全部显示</VgButton>
+                  <VgButton size="sm" variant="ghost" @click="colMenuOpen = false">关闭</VgButton>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="toolbar-group lang-toolbar">
@@ -1072,30 +1188,30 @@ onMounted(async () => {
           <table class="script">
             <thead>
               <tr>
-                <th class="check" title="全选 / 取消全选">
+                <th v-if="isCol('check')" class="check" title="全选 / 取消全选">
                   <VgCheckbox :model-value="allSelected" @update:model-value="toggleSelectAll" />
                 </th>
-                <th class="idx">#</th>
-                <th class="speaker-cell">角色</th>
-                <th class="voice-cell">音色</th>
-                <th class="text-col">原文（{{ config.source_lang }}）</th>
-                <th class="text-col">配音文本（{{ config.target_lang }}）</th>
-                <th class="speed-cell">语速</th>
-                <th class="style-col">风格</th>
-                <th class="status-cell">状态</th>
-                <th class="ops-cell">操作</th>
+                <th v-if="isCol('idx')" class="idx">#</th>
+                <th v-if="isCol('speaker')" class="speaker-cell">角色</th>
+                <th v-if="isCol('voice')" class="voice-cell">音色</th>
+                <th v-if="isCol('text')" class="text-col">原文（{{ config.source_lang }}）</th>
+                <th v-if="isCol('tts_text')" class="text-col">配音文本（{{ config.target_lang }}）</th>
+                <th v-if="isCol('speed')" class="speed-cell">语速</th>
+                <th v-if="isCol('style')" class="style-col">风格</th>
+                <th v-if="isCol('status')" class="status-cell">状态</th>
+                <th v-if="isCol('ops')" class="ops-cell">操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(row, index) in rows" :key="row.id" :class="{ disabled: !row.enabled }">
-                <td class="check">
+                <td v-if="isCol('check')" class="check">
                   <VgCheckbox v-model="row.enabled" />
                 </td>
-                <td class="idx">{{ index + 1 }}</td>
-                <td class="speaker-cell">
+                <td v-if="isCol('idx')" class="idx">{{ index + 1 }}</td>
+                <td v-if="isCol('speaker')" class="speaker-cell">
                   <VgInput v-model="row.speaker" bare size="sm" placeholder="角色名" />
                 </td>
-                <td class="voice-cell">
+                <td v-if="isCol('voice')" class="voice-cell">
                   <VgSelect
                     v-model="row.voice"
                     :options="voiceOptions"
@@ -1105,7 +1221,7 @@ onMounted(async () => {
                     placeholder="选择音色"
                   />
                 </td>
-                <td class="text-col">
+                <td v-if="isCol('text')" class="text-col">
                   <VgTextarea
                     v-model="row.text"
                     bare
@@ -1113,7 +1229,7 @@ onMounted(async () => {
                     placeholder="源语言原文…"
                   />
                 </td>
-                <td class="text-col">
+                <td v-if="isCol('tts_text')" class="text-col">
                   <VgTextarea
                     v-model="row.tts_text"
                     bare
@@ -1121,7 +1237,7 @@ onMounted(async () => {
                     :placeholder="sameLang ? '可留空=用原文' : '译文 / 可手改'"
                   />
                 </td>
-                <td class="speed-cell">
+                <td v-if="isCol('speed')" class="speed-cell">
                   <VgInput
                     v-model="row.speed"
                     type="number"
@@ -1132,7 +1248,7 @@ onMounted(async () => {
                     :step="0.05"
                   />
                 </td>
-                <td class="style-col">
+                <td v-if="isCol('style')" class="style-col">
                   <VgTextarea
                     v-model="row.style"
                     bare
@@ -1140,13 +1256,13 @@ onMounted(async () => {
                     placeholder="默认风格"
                   />
                 </td>
-                <td class="status-cell">
+                <td v-if="isCol('status')" class="status-cell">
                   <VgStatus :status="row.status || 'idle'" :title="row.error || ''">
                     {{ statusLabel(row.status) }}
                     <template v-if="row.duration"> · {{ formatDuration(row.duration) }}</template>
                   </VgStatus>
                 </td>
-                <td class="ops-cell">
+                <td v-if="isCol('ops')" class="ops-cell">
                   <VgButton
                     size="sm"
                     :variant="playingId === row.id ? 'primary' : 'ghost'"
@@ -1354,6 +1470,14 @@ onMounted(async () => {
               <p class="hint" style="margin: 10px 0 0">
                 pywebview + Vue · MiMo VoiceClone / Pro · 本地音色克隆配音
               </p>
+              <p class="hint" style="margin: 6px 0 0">
+                日志目录：data/log（每天一个文件，最多保留 7 天）
+              </p>
+              <div class="row-actions" style="margin-top: 12px">
+                <VgButton size="sm" variant="ghost" icon="folder" :icon-size="14" @click="call('open_log_folder')">
+                  打开日志目录
+                </VgButton>
+              </div>
             </div>
           </VgCard>
         </div>

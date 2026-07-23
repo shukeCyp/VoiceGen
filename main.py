@@ -27,8 +27,9 @@ def _bootstrap_path() -> Path:
 ROOT = _bootstrap_path()
 
 from backend.api import Api, set_window
+from backend.app_log import get_logger, setup_logging
 from backend.config_store import load_config
-from backend.paths import FRONTEND_DIST, FRONTEND_INDEX, RESOURCE_ROOT, VOICES_DIR
+from backend.paths import FRONTEND_DIST, FRONTEND_INDEX, LOG_DIR, RESOURCE_ROOT, VOICES_DIR
 from backend.version import version_info
 
 
@@ -59,9 +60,13 @@ def main() -> int:
     parser.add_argument("--debug", action="store_true", help="打开 DevTools")
     args = parser.parse_args()
 
+    setup_logging()
+    log = get_logger("main")
+
     try:
         import webview
     except ImportError:
+        log.error("未安装 pywebview，请 pip install -r requirements.txt")
         print("请先安装依赖: pip install -r requirements.txt", file=sys.stderr)
         return 1
 
@@ -71,6 +76,13 @@ def main() -> int:
     url = resolve_ui_url(args.dev)
 
     ver = version_info()
+    log.info(
+        "启动 %s · frozen=%s · log_dir=%s · ui=%s",
+        ver.get("display"),
+        _is_frozen(),
+        LOG_DIR,
+        url[:120] if isinstance(url, str) else url,
+    )
     # Match default lilac theme — dark #0f1419 caused a black flash before CSS/Vue mount
     window_bg = str(cfg.get("window_bg") or "#F4F2FB").strip() or "#F4F2FB"
     window = webview.create_window(
@@ -85,6 +97,7 @@ def main() -> int:
     set_window(window)
 
     webview.start(debug=bool(args.debug or args.dev))
+    log.info("窗口已关闭，进程退出")
     return 0
 
 

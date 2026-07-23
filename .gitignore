@@ -10,6 +10,8 @@ data/config.json
 data/project.json
 data/*
 !data/.gitkeep
+# 运行日志（本地 data/log，不入库）
+data/log/
 output/
 output/**
 voices/*

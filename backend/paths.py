@@ -30,11 +30,12 @@ BACKEND_DIR = RESOURCE_ROOT / "backend"
 VOICES_DIR = ROOT / "voices"
 OUTPUT_DIR = ROOT / "output"
 DATA_DIR = ROOT / "data"
+LOG_DIR = DATA_DIR / "log"
 CONFIG_PATH = DATA_DIR / "config.json"
 SEGMENTS_DIR = OUTPUT_DIR / "segments"
 FRONTEND_DIST = RESOURCE_ROOT / "frontend" / "dist"
 FRONTEND_INDEX = FRONTEND_DIST / "index.html"
 
 # Only create writable directories (never write into _MEIPASS)
-for path in (VOICES_DIR, OUTPUT_DIR, DATA_DIR, SEGMENTS_DIR):
+for path in (VOICES_DIR, OUTPUT_DIR, DATA_DIR, LOG_DIR, SEGMENTS_DIR):
     path.mkdir(parents=True, exist_ok=True)

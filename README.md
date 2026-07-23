@@ -4,7 +4,9 @@
 
 ## 使用教程
 
-- **分步图文教程（含界面截图）**：[`docs/使用教程.md`](docs/使用教程.md)  
+- **分步图文教程（含界面截图）**  
+  - Markdown：[`docs/使用教程.md`](docs/使用教程.md)  
+  - **HTML（推荐浏览器打开）**：[`docs/使用教程.html`](docs/使用教程.html)  
 - 截图目录：[`docs/assets/screens/`](docs/assets/screens/)  
 - 示意短视频（概念演示，非录屏）：[`docs/assets/tutorial-preview.mp4`](docs/assets/tutorial-preview.mp4)
 

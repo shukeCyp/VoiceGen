@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>多人配音工具 · 分步图文教程</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="tutorial.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">多人配音工具 · 分步图文教程</h1>
+</header>
+<h1 id="多人配音工具-分步图文教程">多人配音工具 · 分步图文教程</h1>
+<blockquote>
+<p>版本：<strong>v1.0.0</strong><br />
+界面截图来自应用真实 UI（示意数据）<br />
+仓库：https://github.com/shukeCyp/VoiceGen</p>
+</blockquote>
+<p>本教程按「从安装到导出
+MP3」的真实操作顺序编写。每一步对应软件里的具体按钮与面板。</p>
+<hr />
+<h2 id="目录">目录</h2>
+<ol type="1">
+<li><a href="#1-界面总览">界面总览</a></li>
+<li><a href="#2-设置-api必须">设置 API（必须）</a></li>
+<li><a href="#3-管理音色">管理音色</a></li>
+<li><a href="#4-在配音页编辑台词">在配音页编辑台词</a></li>
+<li><a href="#5-导入--导出表格">导入 / 导出表格</a></li>
+<li><a href="#6-显示或隐藏表格列">显示或隐藏表格列</a></li>
+<li><a href="#7-翻译直译与本土化">翻译：直译与本土化</a></li>
+<li><a href="#8-生成整轨-mp3">生成整轨 MP3</a></li>
+<li><a href="#9-单条试听与重新生成">单条试听与重新生成</a></li>
+<li><a href="#10-其它设置与日志">其它设置与日志</a></li>
+<li><a href="#11-常见问题">常见问题</a></li>
+</ol>
+<hr />
+<h2 id="界面总览">1. 界面总览</h2>
+<p>启动软件后，主界面分为：</p>
+<table>
+<thead>
+<tr class="header">
+<th>区域</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>左侧导航</strong></td>
+<td>切换「配音 / 音色 / 设置」三个页面</td>
+</tr>
+<tr class="even">
+<td><strong>顶部标题栏</strong></td>
+<td>当前页名称 + 右侧主操作按钮（如「生成 MP3」）</td>
+</tr>
+<tr class="odd">
+<td><strong>中间工作区</strong></td>
+<td>表格 / 音色列表 / 设置表单</td>
+</tr>
+<tr class="even">
+<td><strong>底部状态栏</strong></td>
+<td>进度、完成信息</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img src="assets/screens/01-配音主界面.png" alt="配音主界面" />
+<figcaption aria-hidden="true">配音主界面</figcaption>
+</figure>
+<p><strong>怎么用</strong></p>
+<ol type="1">
+<li>点左侧 <strong>配音</strong>：写台词、翻译、生成<br />
+</li>
+<li>点 <strong>音色</strong>：导入参考音频、试听、删除<br />
+</li>
+<li>点 <strong>设置</strong>：填 API Key、调并发、换肤</li>
+</ol>
+<p>左下角有：</p>
+<ul>
+<li>API 状态角标（就绪 / 失败）<br />
+</li>
+<li>当前语言方向（如 简体中文 → English）<br />
+</li>
+<li>版本号 <code>v1.0.0</code><br />
+</li>
+<li>马卡龙主题色点（可一键换肤）</li>
+</ul>
+<hr />
+<h2 id="设置-api必须">2. 设置 API（必须）</h2>
+<p><strong>入口</strong>：左侧 → <strong>设置</strong></p>
+<figure>
+<img src="assets/screens/04-设置-API.png" alt="设置 - API 连接" />
+<figcaption aria-hidden="true">设置 - API 连接</figcaption>
+</figure>
+<h3 id="填写密钥">2.1 填写密钥</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>MiMo API Key</strong></td>
+<td>Token Plan 密钥，一般以 <code>tp-</code> 开头</td>
+</tr>
+<tr class="even">
+<td><strong>Base URL</strong></td>
+<td>默认
+<code>https://token-plan-cn.xiaomimimo.com/v1</code>，一般不用改</td>
+</tr>
+</tbody>
+</table>
+<h3 id="检测是否可用">2.2 检测是否可用</h3>
+<ol type="1">
+<li>点 <strong>检测 API</strong><br />
+</li>
+<li>成功时角标显示 <strong>TTS+LLM 就绪</strong><br />
+</li>
+<li>右下角悬浮按钮 <strong>保存设置</strong>
+点一下（必点，否则重启可能丢改动）</li>
+</ol>
+<h3 id="模型分别干什么">2.3 模型分别干什么</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>字段</th>
+<th>模型</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>TTS 模型</td>
+<td><code>mimo-v2.5-tts-voiceclone</code></td>
+<td><strong>生成配音</strong>（克隆音色）</td>
+</tr>
+<tr class="even">
+<td>翻译 / 本土化模型</td>
+<td><code>mimo-v2.5-pro</code></td>
+<td><strong>直译 / 本土化</strong>（改文字，不生成声音）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>启动时如果已经保存过
+Key，会<strong>自动检测</strong>一次，无需每次手动点。</p>
+</blockquote>
+<hr />
+<h2 id="管理音色">3. 管理音色</h2>
+<p><strong>入口</strong>：左侧 → <strong>音色</strong></p>
+<figure>
+<img src="assets/screens/03-音色库.png" alt="音色库" />
+<figcaption aria-hidden="true">音色库</figcaption>
+</figure>
+<h3 id="导入音色">3.1 导入音色</h3>
+<p>有两种方式：</p>
+<ol type="1">
+<li>点工具栏 <strong>导入音色</strong>，在文件对话框里选 wav/mp3
+等<br />
+</li>
+<li>直接把音频文件复制到程序目录下的 <code>voices/</code> 文件夹，再点
+<strong>刷新</strong></li>
+</ol>
+<p><strong>规则</strong>：文件名去掉扩展名 = 音色名。<br />
+例如 <code>Alex.mp3</code> → 下拉框里显示 <strong>Alex</strong>。</p>
+<h3 id="试听参考音">3.2 试听参考音</h3>
+<p>操作列第一个按钮（耳机图标）：</p>
+<ul>
+<li>点一下：<strong>播放</strong> 该音色文件<br />
+</li>
+<li>再点一下：<strong>暂停</strong><br />
+</li>
+<li>点另一条会自动停掉当前播放</li>
+</ul>
+<h3 id="删除音色">3.3 删除音色</h3>
+<p>点 <strong>删除</strong>，会弹出确认框，确认后从 <code>voices/</code>
+移除文件。</p>
+<h3 id="打开目录">3.4 打开目录</h3>
+<p>点 <strong>打开目录</strong>，用系统文件管理器打开
+<code>voices/</code>，方便批量拷贝。</p>
+<hr />
+<h2 id="在配音页编辑台词">4. 在配音页编辑台词</h2>
+<p><strong>入口</strong>：左侧 → <strong>配音</strong></p>
+<p>回到主界面（见第 1 节截图）。</p>
+<h3 id="表格每一列做什么">4.1 表格每一列做什么</h3>
+<table>
+<thead>
+<tr class="header">
+<th>列</th>
+<th>怎么用</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>选用</strong>（勾选）</td>
+<td>勾上的行才会参与「生成 / 翻译」</td>
+</tr>
+<tr class="even">
+<td><strong>#</strong></td>
+<td>行号</td>
+</tr>
+<tr class="odd">
+<td><strong>角色</strong></td>
+<td>显示名，如「甲」「旁白」</td>
+</tr>
+<tr class="even">
+<td><strong>音色</strong></td>
+<td>下拉选择 <code>voices/</code> 里的音色</td>
+</tr>
+<tr class="odd">
+<td><strong>原文</strong></td>
+<td>源语言台词</td>
+</tr>
+<tr class="even">
+<td><strong>配音文本</strong></td>
+<td>真正拿去 TTS 的文本；翻译结果写这里；为空则用原文</td>
+</tr>
+<tr class="odd">
+<td><strong>语速</strong></td>
+<td>如 <code>1.0</code>、<code>1.05</code>（合成后 ffmpeg 变速）</td>
+</tr>
+<tr class="even">
+<td><strong>风格</strong></td>
+<td>可选，给 TTS 的风格提示（支持多行）</td>
+</tr>
+<tr class="odd">
+<td><strong>状态</strong></td>
+<td>待生成 / 生成中 / 完成 / 失败</td>
+</tr>
+<tr class="even">
+<td><strong>操作</strong></td>
+<td>试听、重新生成、上下移、插入、删除</td>
+</tr>
+</tbody>
+</table>
+<h3 id="添加-调整行">4.2 添加 / 调整行</h3>
+<p>工具栏：</p>
+<ul>
+<li><strong>添加行</strong>：表格末尾加一行<br />
+</li>
+<li>操作列 <strong>+</strong>：在当前行下方插入<br />
+</li>
+<li><strong>↑ / ↓</strong>：移动行顺序（生成 MP3 时按表顺序拼接）<br />
+</li>
+<li><strong>×</strong>：删除该行</li>
+</ul>
+<h3 id="全选">4.3 全选</h3>
+<p>表头最左侧勾选框 = <strong>全选 / 取消全选</strong>
+所有行的「选用」。</p>
+<hr />
+<h2 id="导入-导出表格">5. 导入 / 导出表格</h2>
+<p>工具栏按钮（中文）：</p>
+<table>
+<thead>
+<tr class="header">
+<th>按钮</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>导入表格</strong></td>
+<td>从本机选 CSV/JSON 导入台词</td>
+</tr>
+<tr class="even">
+<td><strong>导出表格</strong></td>
+<td>导出当前表（中文表头 CSV）</td>
+</tr>
+<tr class="odd">
+<td><strong>导出 JSON</strong></td>
+<td>导出 JSON 格式</td>
+</tr>
+<tr class="even">
+<td><strong>导出模板</strong></td>
+<td>导出空白示例表，方便填完再导入</td>
+</tr>
+<tr class="odd">
+<td><strong>一键清空</strong></td>
+<td>清空整表（有确认框）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="表头格式中文">5.1 表头格式（中文）</h3>
+<pre class="text"><code>角色,音色,原文,配音文本,语速,风格,启用</code></pre>
+<p>导入也兼容英文表头：<code>speaker,voice,text,tts_text,speed,style,enabled</code>。</p>
+<h3 id="推荐流程">5.2 推荐流程</h3>
+<ol type="1">
+<li>先点 <strong>导出模板</strong><br />
+</li>
+<li>用 Excel / 记事本填台词<br />
+</li>
+<li><strong>导入表格</strong> 读回来<br />
+</li>
+<li>再在界面里选音色、调语速</li>
+</ol>
+<hr />
+<h2 id="显示或隐藏表格列">6. 显示或隐藏表格列</h2>
+<p>窗口较小时，「语速」等列容易被挤窄。</p>
+<ol type="1">
+<li>点工具栏 <strong>显示列</strong><br />
+</li>
+<li>勾选/取消各列<br />
+</li>
+<li>选项会<strong>自动记住</strong>，下次打开同样</li>
+</ol>
+<figure>
+<img src="assets/screens/02-显示列菜单.png" alt="显示列菜单" />
+<figcaption aria-hidden="true">显示列菜单</figcaption>
+</figure>
+<p><strong>固定列</strong>（不能关）：选用、序号、操作。<br />
+<strong>可隐藏</strong>：角色、音色、原文、配音文本、语速、风格、状态。</p>
+<blockquote>
+<p>原文与配音文本至少会保留一列，避免表格只剩空壳。</p>
+</blockquote>
+<hr />
+<h2 id="翻译直译与本土化">7. 翻译：直译与本土化</h2>
+<p>工具栏第二行是语言与翻译区：</p>
+<figure>
+<img src="assets/screens/08-翻译工具栏.png" alt="翻译工具栏" />
+<figcaption aria-hidden="true">翻译工具栏</figcaption>
+</figure>
+<h3 id="选语言">7.1 选语言</h3>
+<ol type="1">
+<li>左侧下拉：<strong>源语言</strong>（原文语言）<br />
+</li>
+<li>中间 <strong>交换</strong> 按钮：源/目标对调<br />
+</li>
+<li>右侧下拉：<strong>目标语言</strong>（希望配音的语言）</li>
+</ol>
+<figure>
+<img src="assets/screens/09-语言下拉.png" alt="语言下拉" />
+<figcaption aria-hidden="true">语言下拉</figcaption>
+</figure>
+<p>下拉支持<strong>搜索</strong>（不是系统原生下拉框）。</p>
+<h3 id="直译">7.2 直译</h3>
+<ul>
+<li>按钮：<strong>直译</strong><br />
+</li>
+<li>调用：<strong><code>mimo-v2.5-pro</code></strong> →
+<code>POST {Base URL}/chat/completions</code><br />
+</li>
+<li>结果：写入「配音文本」列<br />
+</li>
+<li>行为：分批并发翻译，<strong>每批完成就立刻更新界面</strong></li>
+</ul>
+<h3 id="本土化">7.3 本土化</h3>
+<ul>
+<li>按钮：<strong>本土化</strong><br />
+</li>
+<li>同样走 <code>mimo-v2.5-pro</code><br />
+</li>
+<li>更偏目标市场口语、文化表达，不是字对字</li>
+</ul>
+<h3 id="其它">7.4 其它</h3>
+<table>
+<thead>
+<tr class="header">
+<th>按钮</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>复制原文</strong></td>
+<td>把原文整列复制到配音文本（不调 API）</td>
+</tr>
+<tr class="even">
+<td><strong>清空译文</strong></td>
+<td>清空所有配音文本</td>
+</tr>
+</tbody>
+</table>
+<p>源语言 = 目标语言时：直译不会调 API，直接复制原文。</p>
+<hr />
+<h2 id="生成整轨-mp3">8. 生成整轨 MP3</h2>
+<h3 id="生成前检查">8.1 生成前检查</h3>
+<ul class="task-list">
+<li><label><input type="checkbox" />API 已就绪<br />
+</label></li>
+<li><label><input type="checkbox" />需要的行已勾选「选用」<br />
+</label></li>
+<li><label><input type="checkbox" />每行选了音色<br />
+</label></li>
+<li><label><input type="checkbox" />有原文或配音文本</label></li>
+</ul>
+<h3 id="开始生成">8.2 开始生成</h3>
+<ol type="1">
+<li>点右上角 <strong>生成 MP3（N）</strong>（N = 可生成行数）<br />
+</li>
+<li>底部进度条显示并发进度（默认多线程）<br />
+</li>
+<li>完成后底部显示输出路径，文件在 <code>output/</code></li>
+</ol>
+<h3 id="并发参数可选">8.3 并发参数（可选）</h3>
+<p><strong>设置 → 并发性能</strong>：</p>
+<figure>
+<img src="assets/screens/05-设置-并发与主题.png" alt="并发与主题" />
+<figcaption aria-hidden="true">并发与主题</figcaption>
+</figure>
+<table>
+<thead>
+<tr class="header">
+<th>参数</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>TTS 并发生成线程数</td>
+<td>同时请求几条配音（默认 4）</td>
+</tr>
+<tr class="even">
+<td>翻译并发线程数</td>
+<td>同时跑几批翻译</td>
+</tr>
+<tr class="odd">
+<td>翻译每批行数</td>
+<td>每批发给大模型多少句</td>
+</tr>
+</tbody>
+</table>
+<p>改完后记得 <strong>保存设置</strong>。</p>
+<h3 id="取消">8.4 取消</h3>
+<p>生成过程中右上角会出现 <strong>取消</strong>，可中断任务。</p>
+<hr />
+<h2 id="单条试听与重新生成">9. 单条试听与重新生成</h2>
+<p>在配音表 <strong>操作</strong> 列：</p>
+<table>
+<thead>
+<tr class="header">
+<th>图标/按钮</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>耳机</td>
+<td>试听本条已生成的音频（需状态为「完成」）</td>
+</tr>
+<tr class="even">
+<td>刷新</td>
+<td><strong>只重做这一条</strong>，不重新合并整轨 MP3</td>
+</tr>
+<tr class="odd">
+<td>↑ ↓</td>
+<td>移动顺序</td>
+</tr>
+<tr class="even">
+<td>+</td>
+<td>下方插入行</td>
+</tr>
+<tr class="odd">
+<td>删除</td>
+<td>删行</td>
+</tr>
+</tbody>
+</table>
+<p>流程建议：</p>
+<ol type="1">
+<li>先 <strong>生成 MP3</strong> 或对单行 <strong>刷新</strong><br />
+</li>
+<li>点耳机试听<br />
+</li>
+<li>不满意改文本/语速后再单条重做<br />
+</li>
+<li>全部 OK 后再点一次「生成 MP3」导出完整成片</li>
+</ol>
+<hr />
+<h2 id="其它设置与日志">10. 其它设置与日志</h2>
+<h3 id="主题">10.1 主题</h3>
+<p>设置页可切换马卡龙主题；也可点左侧导航底部色点。<br />
+主题会记住，下次打开自动恢复。</p>
+<h3 id="关于与日志">10.2 关于与日志</h3>
+<figure>
+<img src="assets/screens/06-设置-关于与日志.png" alt="关于与日志" />
+<figcaption aria-hidden="true">关于与日志</figcaption>
+</figure>
+<ul>
+<li>显示版本号<br />
+</li>
+<li><strong>打开日志目录</strong> → <code>data/log/</code><br />
+</li>
+<li>日志文件名：<code>voicegen-YYYY-MM-DD.log</code><br />
+</li>
+<li><strong>每天一个，最多保留 7 天</strong><br />
+</li>
+<li>含 API、翻译、TTS 每行、ffmpeg、界面操作等</li>
+</ul>
+<h3 id="确认对话框">10.3 确认对话框</h3>
+<p>危险操作（如清空整表、删除音色）会弹出<strong>应用内对话框</strong>，不是系统原生弹窗：</p>
+<figure>
+<img src="assets/screens/07-确认对话框.png" alt="确认对话框" />
+<figcaption aria-hidden="true">确认对话框</figcaption>
+</figure>
+<ul>
+<li><strong>取消</strong>：关闭<br />
+</li>
+<li><strong>清空 / 删除</strong>：执行</li>
+</ul>
+<hr />
+<h2 id="常见问题">11. 常见问题</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>问题</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>检测 API 失败 / <code>WinError 10061</code></td>
+<td>检查网络；关闭未启动的系统代理；确认 Base URL</td>
+</tr>
+<tr class="even">
+<td>进度条中文乱码</td>
+<td>更新到最新版</td>
+</tr>
+<tr class="odd">
+<td>没有 ffmpeg</td>
+<td>用官方打包的 exe（已内置）；开发环境可运行
+<code>python scripts/download_ffmpeg_windows.py</code></td>
+</tr>
+<tr class="even">
+<td>语速列被挤没</td>
+<td>用「显示列」隐藏其它列，或拉大窗口</td>
+</tr>
+<tr class="odd">
+<td>翻译很慢</td>
+<td>正常：走大模型；可调「翻译并发 / 批大小」</td>
+</tr>
+<tr class="even">
+<td>生成失败</td>
+<td>打开 <code>data/log</code> 看当天日志</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2
+id="附录推荐完整流程四人多音色">附录：推荐完整流程（四人多音色）</h2>
+<ol type="1">
+<li><strong>设置</strong> 里填 Key → 检测 → 保存<br />
+</li>
+<li><strong>音色</strong> 导入 4 个参考音 → 试听确认<br />
+</li>
+<li><strong>配音</strong> 导入表格或粘贴台词<br />
+</li>
+<li>每行选对应音色<br />
+5.（可选）选目标语言 → 直译 / 本土化<br />
+</li>
+<li>全选 → <strong>生成 MP3</strong><br />
+</li>
+<li>试听不满意的行 → 单条重新生成<br />
+</li>
+<li>再到 <code>output/</code> 取最终文件</li>
+</ol>
+<hr />
+<p><em>截图由教程脚本自动采集自当前
+UI；若界面有小幅改版，以你本机软件为准。</em></p>
+</body>
+</html>

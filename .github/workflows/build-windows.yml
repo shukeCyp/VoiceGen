@@ -1,0 +1,93 @@
+# 打包 Windows 单文件 EXE：多人配音工具.exe
+name: Build Windows EXE
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: PyInstaller · Windows one-file
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build Vue frontend (static dist)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify frontend dist
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "frontend/dist/index.html")) {
+            throw "frontend/dist/index.html missing after build"
+          }
+          Get-ChildItem -Recurse frontend/dist | Select-Object FullName
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "pyinstaller>=6.3"
+
+      - name: Package with PyInstaller (one-file)
+        run: |
+          pyinstaller --noconfirm --clean voicegen.spec
+
+      - name: Verify EXE
+        shell: pwsh
+        run: |
+          $exe = "dist/多人配音工具.exe"
+          if (-not (Test-Path $exe)) {
+            Get-ChildItem -Recurse dist
+            throw "EXE not found: $exe"
+          }
+          $item = Get-Item $exe
+          Write-Host "Built: $($item.FullName) ($([math]::Round($item.Length / 1MB, 2)) MB)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 多人配音工具-windows-x64
+          path: dist/多人配音工具.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release asset (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/多人配音工具.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

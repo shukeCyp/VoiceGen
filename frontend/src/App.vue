@@ -156,6 +156,13 @@ function showToast(message, type = 'info') {
   toastTimer = setTimeout(() => {
     toast.value = null
   }, 3200)
+  // mirror important UI messages into backend daily logs
+  const level = type === 'error' ? 'error' : type === 'success' ? 'info' : 'info'
+  call('client_log', level, String(message || ''), { source: 'toast', type })
+}
+
+function uiLog(level, message, context) {
+  call('client_log', level || 'info', String(message || ''), context || {})
 }
 
 const progressPct = computed(() => {
@@ -575,6 +582,12 @@ async function runTranslate(mode) {
     showToast('没有可翻译的原文行', 'error')
     return
   }
+  uiLog('info', mode === 'localize' ? '用户点击本土化翻译' : '用户点击直译', {
+    mode,
+    count,
+    source_lang: config.source_lang,
+    target_lang: config.target_lang,
+  })
   translating.value = true
   progress.message =
     mode === 'localize'
@@ -619,6 +632,7 @@ async function startGenerate() {
     showToast('没有可生成的行（需有原文或配音文本）', 'error')
     return
   }
+  uiLog('info', '用户点击生成全部 MP3', { count: enabledCount.value, workers: config.tts_workers })
   for (const row of rows.value) {
     if (row.enabled && speakText(row)) {
       row.status = 'idle'
@@ -957,6 +971,7 @@ onMounted(async () => {
   onEvent(applyEvent)
   document.addEventListener('mousedown', onDocCloseColMenu)
   apiStatusMsg.value = '初始化…'
+  uiLog('info', 'UI 挂载完成', { page: page.value, theme: themeId.value })
   await refreshVersion()
   await refreshConfig()
   await refreshLanguages()
@@ -965,6 +980,15 @@ onMounted(async () => {
   resizeAllTextareas()
   // 已配置 API Key 时启动自动检测 TTS + 翻译模型
   await autoCheckApiOnBoot()
+  const st = await call('get_runtime_status')
+  if (st.ok) {
+    uiLog('info', '运行时状态', {
+      ffmpeg: st.data?.ffmpeg?.ffmpeg || null,
+      ffprobe: st.data?.ffmpeg?.ffprobe || null,
+      bundled: st.data?.ffmpeg?.bundled,
+      log_dir: st.data?.log_dir,
+    })
+  }
 })
 </script>
 <template>

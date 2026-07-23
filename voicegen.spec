@@ -18,6 +18,13 @@ datas = [
 ]
 
 binaries = []
+# Bundle Windows ffmpeg/ffprobe when present (downloaded in CI)
+_ff_dir = ROOT / "vendor" / "ffmpeg" / "windows"
+for _name in ("ffmpeg.exe", "ffprobe.exe"):
+    _p = _ff_dir / _name
+    if _p.is_file():
+        binaries.append((str(_p), "vendor/ffmpeg/windows"))
+
 hiddenimports = [
     "backend",
     "backend.api",
@@ -31,6 +38,7 @@ hiddenimports = [
     "backend.version",
     "backend.voices",
     "backend.app_log",
+    "backend.ffmpeg_bin",
     "webview",
     "bottle",
     "proxy_tools",

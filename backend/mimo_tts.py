@@ -7,10 +7,15 @@ import json
 import os
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
+
+from .app_log import get_logger
+
+log = get_logger("mimo_tts")
 
 MODEL_ID = "mimo-v2.5-tts-voiceclone"
 OFFICIAL_BASE_URLS = {
@@ -115,22 +120,41 @@ def _safe_api_error(exc: urllib.error.HTTPError) -> RuntimeError:
 
 
 def fetch_models(base_url: str, api_key: str, timeout: float = 20.0) -> dict:
+    url = f"{base_url}/models"
+    log.info("GET %s", url)
     request = urllib.request.Request(
-        f"{base_url}/models",
+        url,
         headers={"api-key": api_key, "Accept": "application/json"},
     )
     try:
+        t0 = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.load(response)
+            data = json.load(response)
+        log.info("GET /models ok · %.2fs", time.perf_counter() - t0)
+        return data
     except urllib.error.HTTPError as exc:
+        log.warning("GET /models HTTP %s", exc.code)
         raise _safe_api_error(exc) from None
+    except Exception as exc:
+        log.error("GET /models network error: %s", exc)
+        raise
 
 
 def request_audio(
     base_url: str, api_key: str, payload: dict, timeout: float = 180.0
 ) -> bytes:
+    url = f"{base_url}/chat/completions"
+    model = payload.get("model")
+    text_len = 0
+    try:
+        for m in payload.get("messages") or []:
+            if m.get("role") == "assistant":
+                text_len = len(str(m.get("content") or ""))
+    except Exception:
+        pass
+    log.info("POST TTS %s · model=%s · text_len=%s", url, model, text_len)
     request = urllib.request.Request(
-        f"{base_url}/chat/completions",
+        url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "api-key": api_key,
@@ -140,10 +164,22 @@ def request_audio(
         method="POST",
     )
     try:
+        t0 = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            body = response.read()
+        log.info(
+            "POST TTS ok · model=%s · %.2fs · resp_bytes=%s",
+            model,
+            time.perf_counter() - t0,
+            len(body),
+        )
+        return body
     except urllib.error.HTTPError as exc:
+        log.warning("POST TTS HTTP %s · model=%s", exc.code, model)
         raise _safe_api_error(exc) from None
+    except Exception as exc:
+        log.error("POST TTS network error · model=%s · %s", model, exc)
+        raise
 
 
 def write_audio_response(response_bytes: bytes, output: Path) -> Path:
@@ -197,6 +233,16 @@ def synthesize(
 ) -> Path:
     base = normalize_base_url(base_url)
     validate_key_for_base_url(api_key, base)
-    voice_data = encode_reference_audio(Path(reference_audio))
+    ref = Path(reference_audio)
+    log.info(
+        "synthesize · model=%s · ref=%s · text_len=%s · out=%s",
+        model or MODEL_ID,
+        ref.name,
+        len((text or "").strip()),
+        Path(output).name,
+    )
+    voice_data = encode_reference_audio(ref)
     payload = build_payload(text, style, voice_data, model=model or MODEL_ID)
-    return write_audio_response(request_audio(base, api_key, payload), Path(output))
+    out = write_audio_response(request_audio(base, api_key, payload), Path(output))
+    log.info("synthesize done · out=%s · size=%s", out.name, out.stat().st_size)
+    return out

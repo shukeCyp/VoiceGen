@@ -60,6 +60,13 @@ jobs:
           pip install -r requirements.txt
           pip install "pyinstaller>=6.3"
 
+      - name: Download bundled FFmpeg (Windows)
+        run: |
+          python scripts/download_ffmpeg_windows.py
+          if (-not (Test-Path "vendor/ffmpeg/windows/ffmpeg.exe")) { throw "ffmpeg.exe missing" }
+          if (-not (Test-Path "vendor/ffmpeg/windows/ffprobe.exe")) { throw "ffprobe.exe missing" }
+          Get-ChildItem vendor/ffmpeg/windows
+
       - name: Package with PyInstaller (one-file)
         run: |
           pyinstaller --noconfirm --clean voicegen.spec
@@ -74,6 +81,8 @@ jobs:
           }
           $item = Get-Item $exe
           Write-Host "Built: $($item.FullName) ($([math]::Round($item.Length / 1MB, 2)) MB)"
+          # smoke: ensure binaries were staged before package
+          if (-not (Test-Path "vendor/ffmpeg/windows/ffmpeg.exe")) { throw "ffmpeg not bundled source" }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -63,7 +63,14 @@ VoiceGen/
 3. 在对应 Run 的 Artifacts 下载；打 tag 时会附加到 Release  
 
 运行时数据（`voices/`、`output/`、`data/`）写在 **exe 同目录**，请把参考音色放在 exe 旁的 `voices/` 文件夹。  
-本机需已安装 **WebView2**（Windows 10/11 一般自带）与 **ffmpeg**（配音合并用，需在 PATH 中）。
+本机需已安装 **WebView2**（Windows 10/11 一般自带）。  
+**ffmpeg / ffprobe 已内置进 Windows 安装包**，无需再单独安装；开发环境若无系统 ffmpeg，可执行：
+
+```bash
+python scripts/download_ffmpeg_windows.py
+```
+
+日志在 `data/log/voicegen-YYYY-MM-DD.log`，保留 7 天。
 
 ### 本地打包（Windows）
 

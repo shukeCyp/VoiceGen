@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from . import audio_utils, config_store, languages, mimo_chat, mimo_tts, table_io, version, voices
 from .app_log import get_logger
+from .ffmpeg_bin import ffmpeg_status
 from .paths import DATA_DIR, LOG_DIR, OUTPUT_DIR, SEGMENTS_DIR, VOICES_DIR
 
 log = get_logger("api")
@@ -672,7 +673,14 @@ class Api:
                     ref = voices.resolve_voice(voice_id)
                     raw_wav = job_dir / f"{index:04d}_{row_id}_raw.wav"
                     final_wav = job_dir / f"{index:04d}_{row_id}.wav"
-
+                    log.info(
+                        "TTS 行开始 · #%s · id=%s · speaker=%s · voice=%s · text_len=%s",
+                        index + 1,
+                        row_id,
+                        speaker,
+                        voice_id,
+                        len(text),
+                    )
                     mimo_tts.synthesize(
                         text=text,
                         reference_audio=ref,
@@ -686,6 +694,13 @@ class Api:
                         raise RuntimeError("已取消")
                     audio_utils.apply_speed(raw_wav, final_wav, speed)
                     duration = audio_utils.probe_duration(final_wav)
+                    log.info(
+                        "TTS 行完成 · #%s · id=%s · duration=%.2fs · path=%s",
+                        index + 1,
+                        row_id,
+                        duration,
+                        final_wav.name,
+                    )
                     item = {
                         "row_id": row_id,
                         "status": "done",
@@ -706,6 +721,13 @@ class Api:
                     )
                     return index, item, final_wav
                 except Exception as exc:
+                    log.warning(
+                        "TTS 行失败 · #%s · id=%s · speaker=%s · err=%s",
+                        index + 1,
+                        row_id,
+                        speaker,
+                        exc,
+                    )
                     item = {
                         "row_id": row_id,
                         "status": "error",
@@ -930,6 +952,57 @@ class Api:
             return _ok(path)
         except Exception as exc:
             log.warning("打开日志目录失败: %s", exc)
+            return _err(str(exc))
+
+    def client_log(self, level: str = "info", message: str = "", context: dict | None = None) -> dict:
+        """Accept UI-side logs into data/log (no secrets)."""
+        try:
+            msg = str(message or "").strip()
+            if not msg:
+                return _err("empty message")
+            # hard cap
+            msg = msg[:2000]
+            extra = ""
+            if isinstance(context, dict) and context:
+                safe = {
+                    k: v
+                    for k, v in context.items()
+                    if k.lower() not in {"api_key", "password", "token", "authorization"}
+                }
+                try:
+                    extra = " · " + json.dumps(safe, ensure_ascii=False)[:800]
+                except Exception:
+                    extra = ""
+            line = f"[ui] {msg}{extra}"
+            lv = (level or "info").lower()
+            if lv in ("error", "err"):
+                log.error(line)
+            elif lv in ("warning", "warn"):
+                log.warning(line)
+            elif lv == "debug":
+                log.debug(line)
+            else:
+                log.info(line)
+            return _ok(True)
+        except Exception as exc:
+            return _err(str(exc))
+
+    def get_runtime_status(self) -> dict:
+        """ffmpeg + log paths for diagnostics."""
+        try:
+            from .ffmpeg_bin import ffmpeg_status as ffst
+
+            return _ok(
+                {
+                    "ffmpeg": ffst(),
+                    "log_dir": str(LOG_DIR.resolve()),
+                    "data_dir": str(DATA_DIR.resolve()),
+                    "voices_dir": str(VOICES_DIR.resolve()),
+                    "output_dir": str(OUTPUT_DIR.resolve()),
+                }
+            )
+        except Exception as exc:
+            log.warning("get_runtime_status failed: %s", exc)
             return _err(str(exc))
 
     def new_empty_row(self) -> dict:

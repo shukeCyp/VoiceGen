@@ -76,12 +76,26 @@ def main() -> int:
     url = resolve_ui_url(args.dev)
 
     ver = version_info()
+    try:
+        from backend.ffmpeg_bin import ffmpeg_status
+
+        ff = ffmpeg_status()
+        log.info(
+            "ffmpeg 状态 · ffmpeg=%s · ffprobe=%s · bundled=%s",
+            ff.get("ffmpeg"),
+            ff.get("ffprobe"),
+            ff.get("bundled"),
+        )
+    except Exception as exc:
+        log.warning("ffmpeg 探测失败: %s", exc)
+
     log.info(
-        "启动 %s · frozen=%s · log_dir=%s · ui=%s",
+        "启动 %s · frozen=%s · log_dir=%s · ui=%s · api_key_set=%s",
         ver.get("display"),
         _is_frozen(),
         LOG_DIR,
         url[:120] if isinstance(url, str) else url,
+        bool(str(cfg.get("api_key") or "").strip()),
     )
     # Match default lilac theme — dark #0f1419 caused a black flash before CSS/Vue mount
     window_bg = str(cfg.get("window_bg") or "#F4F2FB").strip() or "#F4F2FB"

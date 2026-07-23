@@ -7,7 +7,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .app_log import get_logger
 from .paths import CONFIG_PATH
+
+log = get_logger("config")
 
 DEFAULT_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1"
 DEFAULT_MODEL = "mimo-v2.5-tts-voiceclone"
@@ -71,6 +74,8 @@ def save_config(updates: dict[str, Any]) -> dict[str, Any]:
         json.dumps(cfg, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    safe_keys = [k for k in (updates or {}) if k != "api_key"]
+    log.info("save_config · keys=%s · api_key_set=%s", safe_keys, bool(str(cfg.get("api_key") or "").strip()))
     return public_config(cfg)
 
 

@@ -5,7 +5,10 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from .app_log import get_logger
 from .paths import VOICES_DIR
+
+log = get_logger("voices")
 
 AUDIO_EXTS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
 
@@ -28,6 +31,7 @@ def list_voices() -> list[dict]:
                 "size": path.stat().st_size,
             }
         )
+    log.debug("list_voices · count=%s · dir=%s", len(voices), VOICES_DIR)
     return voices
 
 
@@ -64,6 +68,7 @@ def import_voice(source: str, name: str | None = None) -> dict:
         n += 1
     if dest.resolve() != src:
         shutil.copy2(src, dest)
+    log.info("import_voice · from=%s · to=%s", src.name, dest.name)
     return {
         "id": dest.stem,
         "name": dest.stem,
@@ -74,6 +79,7 @@ def import_voice(source: str, name: str | None = None) -> dict:
 
 def delete_voice(voice_id: str) -> bool:
     path = resolve_voice(voice_id)
+    log.info("delete_voice · id=%s · path=%s", voice_id, path.name)
     path.unlink(missing_ok=True)
     return True
 

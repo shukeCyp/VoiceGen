@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+from .app_log import get_logger
+from .ffmpeg_bin import require_ffmpeg, require_ffprobe
+
+log = get_logger("audio")
 
 
 class AudioError(RuntimeError):
@@ -14,17 +18,21 @@ class AudioError(RuntimeError):
 
 
 def _require_ffmpeg() -> str:
-    path = shutil.which("ffmpeg")
-    if not path:
-        raise AudioError("未找到 ffmpeg，请先安装并加入 PATH")
-    return path
+    try:
+        path = require_ffmpeg()
+        log.debug("using ffmpeg: %s", path)
+        return path
+    except FileNotFoundError as exc:
+        raise AudioError(str(exc)) from exc
 
 
 def _require_ffprobe() -> str:
-    path = shutil.which("ffprobe")
-    if not path:
-        raise AudioError("未找到 ffprobe，请先安装并加入 PATH")
-    return path
+    try:
+        path = require_ffprobe()
+        log.debug("using ffprobe: %s", path)
+        return path
+    except FileNotFoundError as exc:
+        raise AudioError(str(exc)) from exc
 
 
 def probe_duration(path: Path) -> float:
@@ -41,9 +49,12 @@ def probe_duration(path: Path) -> float:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
+        log.error("ffprobe failed for %s: %s", path, (result.stderr or "")[-300:])
         raise AudioError(f"无法读取时长: {path.name}")
     data = json.loads(result.stdout or "{}")
-    return float(data.get("format", {}).get("duration") or 0.0)
+    duration = float(data.get("format", {}).get("duration") or 0.0)
+    log.debug("probe duration %s = %.3fs", path.name, duration)
+    return duration
 
 
 def _atempo_filters(speed: float) -> list[str]:
@@ -52,10 +63,8 @@ def _atempo_filters(speed: float) -> list[str]:
     if speed <= 0:
         raise ValueError("语速必须大于 0")
     filters: list[str] = []
-    # Clamp extreme values for safety
     speed = max(0.25, min(4.0, speed))
     remaining = speed
-    # atempo accepts 0.5–2.0 only
     while remaining > 2.0 + 1e-9:
         filters.append("atempo=2.0")
         remaining /= 2.0
@@ -72,9 +81,14 @@ def apply_speed(input_path: Path, output_path: Path, speed: float = 1.0) -> Path
     input_path = Path(input_path)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    log.info(
+        "apply_speed · in=%s · out=%s · speed=%s",
+        input_path.name,
+        output_path.name,
+        speed,
+    )
 
     if abs(float(speed) - 1.0) < 1e-6:
-        # Normalize to wav for consistent concat
         cmd = [
             ffmpeg,
             "-y",
@@ -104,7 +118,9 @@ def apply_speed(input_path: Path, output_path: Path, speed: float = 1.0) -> Path
         ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0 or not output_path.is_file():
-        raise AudioError(f"变速失败: {result.stderr[-400:] if result.stderr else 'unknown'}")
+        err = result.stderr[-400:] if result.stderr else "unknown"
+        log.error("apply_speed failed: %s", err)
+        raise AudioError(f"变速失败: {err}")
     return output_path
 
 
@@ -114,8 +130,8 @@ def make_silence(output_path: Path, duration_ms: int, sample_rate: int = 24000) 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0, int(duration_ms)) / 1000.0
     if duration <= 0:
-        # tiny placeholder so concat list stays valid — skip by not calling
         raise ValueError("silence duration must be positive")
+    log.debug("make_silence · %sms → %s", duration_ms, output_path.name)
     cmd = [
         ffmpeg,
         "-y",
@@ -129,6 +145,7 @@ def make_silence(output_path: Path, duration_ms: int, sample_rate: int = 24000) 
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0 or not output_path.is_file():
+        log.error("make_silence failed: %s", (result.stderr or "")[-300:])
         raise AudioError("生成静音失败")
     return output_path
 
@@ -141,6 +158,12 @@ def concat_to_mp3(segment_paths: list[Path], output_mp3: Path, gap_ms: int = 200
 
     output_mp3 = Path(output_mp3)
     output_mp3.parent.mkdir(parents=True, exist_ok=True)
+    log.info(
+        "concat_to_mp3 · segments=%s · gap_ms=%s · out=%s",
+        len(segment_paths),
+        gap_ms,
+        output_mp3,
+    )
 
     with tempfile.TemporaryDirectory(prefix="voicegen_concat_") as tmp:
         tmp_dir = Path(tmp)
@@ -155,7 +178,6 @@ def concat_to_mp3(segment_paths: list[Path], output_mp3: Path, gap_ms: int = 200
             seg = Path(seg)
             if not seg.is_file():
                 raise AudioError(f"片段不存在: {seg}")
-            # Ensure wav-compatible intermediate
             normalized = tmp_dir / f"seg_{i:04d}.wav"
             apply_speed(seg, normalized, 1.0)
             pieces.append(normalized)
@@ -164,7 +186,6 @@ def concat_to_mp3(segment_paths: list[Path], output_mp3: Path, gap_ms: int = 200
 
         lines = []
         for p in pieces:
-            # ffmpeg concat demuxer needs escaped single quotes
             escaped = str(p).replace("'", "'\\''")
             lines.append(f"file '{escaped}'")
         list_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -188,11 +209,12 @@ def concat_to_mp3(segment_paths: list[Path], output_mp3: Path, gap_ms: int = 200
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0 or not output_mp3.is_file():
-            raise AudioError(
-                f"合并 MP3 失败: {result.stderr[-500:] if result.stderr else 'unknown'}"
-            )
+            err = result.stderr[-500:] if result.stderr else "unknown"
+            log.error("concat_to_mp3 failed: %s", err)
+            raise AudioError(f"合并 MP3 失败: {err}")
 
     duration = probe_duration(output_mp3)
+    log.info("concat_to_mp3 done · duration=%.2fs · path=%s", duration, output_mp3)
     return {
         "path": str(output_mp3.resolve()),
         "duration": duration,

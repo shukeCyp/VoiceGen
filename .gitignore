@@ -12,6 +12,8 @@ data/*
 !data/.gitkeep
 # 运行日志（本地 data/log，不入库）
 data/log/
+# 本地下载的 Windows ffmpeg（CI 会重新拉取）
+vendor/ffmpeg/windows/*.exe
 output/
 output/**
 voices/*

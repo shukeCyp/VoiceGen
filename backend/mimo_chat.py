@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Literal
 
 from . import languages, mimo_tts
+from .app_log import get_logger
+
+log = get_logger("mimo_chat")
 
 LLM_MODEL = "mimo-v2.5-pro"
 TranslateMode = Literal["literal", "localize"]
@@ -52,8 +56,15 @@ def chat_completion(
         "temperature": temperature,
         "stream": False,
     }
+    url = f"{base}/chat/completions"
+    log.info(
+        "POST chat · model=%s · temp=%s · messages=%s",
+        model or LLM_MODEL,
+        temperature,
+        len(messages),
+    )
     request = urllib.request.Request(
-        f"{base}/chat/completions",
+        url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "api-key": api_key,
@@ -63,14 +74,25 @@ def chat_completion(
         method="POST",
     )
     try:
+        t0 = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = json.load(response)
+        log.info(
+            "POST chat ok · model=%s · %.2fs",
+            model or LLM_MODEL,
+            time.perf_counter() - t0,
+        )
     except urllib.error.HTTPError as exc:
+        log.warning("POST chat HTTP %s · model=%s", exc.code, model or LLM_MODEL)
         raise _safe_api_error(exc) from None
+    except Exception as exc:
+        log.error("POST chat network error · model=%s · %s", model or LLM_MODEL, exc)
+        raise
 
     try:
         content = body["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
+        log.error("chat response missing content: keys=%s", list(body.keys()) if isinstance(body, dict) else type(body))
         raise RuntimeError("MiMo 聊天响应格式无效") from exc
 
     if isinstance(content, list):
@@ -197,6 +219,14 @@ def translate_batch(
     if temperature is not None:
         temp = temperature
 
+    log.info(
+        "translate_batch · mode=%s · %s→%s · items=%s · model=%s",
+        mode,
+        source_lang,
+        target_lang,
+        len(items),
+        model or LLM_MODEL,
+    )
     raw = chat_completion(
         base_url=base_url,
         api_key=api_key,
@@ -208,7 +238,11 @@ def translate_batch(
         temperature=temp,
         timeout=90.0 if mode == "literal" else 120.0,
     )
-    parsed = _extract_json_array(raw)
+    try:
+        parsed = _extract_json_array(raw)
+    except Exception:
+        log.error("translate_batch parse fail · raw_head=%s", (raw or "")[:240])
+        raise
 
     by_id: dict[str, str] = {}
     ordered: list[str] = []
